@@ -142,6 +142,7 @@ td{padding:11px 13px;vertical-align:middle}
 .btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#dc2626}
 .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{background:var(--bg)}
 .btn-sm{padding:5px 10px;font-size:12px}
+.tventa-btn.active,.par-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
 .btn-icon{background:none;border:none;cursor:pointer;padding:5px;border-radius:6px;color:var(--muted);transition:all .15s;font-size:14px}.btn-icon:hover{background:var(--bg);color:var(--text)}
 
 /* ── FORMS ── */
@@ -354,6 +355,7 @@ textarea{resize:vertical}
     <div class="nav-item" onclick="navigate('salida')" data-admin><span class="nav-icon"><i class="bi bi-arrow-up-circle-fill"></i></span>Salida de Stock</div>
     <div class="nav-item" onclick="navigate('importar')" data-admin><span class="nav-icon"><i class="bi bi-upload"></i></span>Importar Excel</div>
     <div class="nav-label" data-admin>Análisis</div>
+    <div class="nav-item" onclick="navigate('publicidad')" data-admin><span class="nav-icon"><i class="bi bi-megaphone-fill"></i></span>Publicidad<span class="nav-badge" id="badge-publi">0</span></div>
     <div class="nav-item" onclick="navigate('historial')" data-admin><span class="nav-icon"><i class="bi bi-clock-history"></i></span>Historial</div>
     <div class="nav-item" onclick="navigate('reportes')" data-admin><span class="nav-icon"><i class="bi bi-bar-chart-fill"></i></span>Reportes</div>
     <div class="nav-item" onclick="navigate('alertas')" data-admin>
@@ -632,6 +634,15 @@ textarea{resize:vertical}
             <div class="step-num" id="snum1">1</div>
             <div style="flex:1">
               <div style="font-weight:600;margin-bottom:12px">Producto, talla y cantidad</div>
+              <div class="form-group" id="tipo-venta-g">
+                <label>Tipo de venta</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap" id="tipo-venta-btns">
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn active" onclick="setTipoVenta('individual',this)">Individual</button>
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('combo',this)">Combo (2)</button>
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('trio',this)">Trío (3)</button>
+                </div>
+                <div id="tipo-venta-hint" style="font-size:11px;color:var(--muted);margin-top:6px;display:none"></div>
+              </div>
               <div class="form-group">
                 <label>Producto (modelo)</label>
                 <div id="ped-prod-display" onclick="abrirPickerProducto()"
@@ -671,8 +682,14 @@ textarea{resize:vertical}
           <div style="font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
             <i class="bi bi-cart3" style="color:var(--primary);font-size:18px"></i>
             Carrito — <span id="carrito-count">0</span> producto(s)
+            <span id="carrito-combo-badge" class="badge badge-purple" style="display:none;margin-left:auto"></span>
           </div>
           <div id="carrito-list"></div>
+          <div id="combo-precio-g" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">Precio del <span id="combo-precio-tipo">combo</span> (total) *</label>
+            <input type="number" id="combo-precio" placeholder="Ej: 320000" min="0" oninput="onComboPrecioInput()">
+            <div class="addr-status" id="combo-precio-status"></div>
+          </div>
         </div>
         <!-- Paso 2: Cliente y envío -->
         <div class="card mb-16" id="pedido-step2" style="opacity:.5;pointer-events:none">
@@ -875,6 +892,60 @@ textarea{resize:vertical}
         </div>
       </div>
       <div id="guias-content"></div>
+    </div>
+
+    <!-- PUBLICIDAD (admin) -->
+    <div class="page" id="page-publicidad">
+      <div class="section-header">
+        <div>
+          <div class="section-title"><i class="bi bi-megaphone-fill" style="color:var(--primary)"></i> Publicidad — RR GROUP</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px" id="publi-last-sync">Esperando datos de n8n…</div>
+        </div>
+        <div class="flex gap-8" style="flex-wrap:wrap;align-items:center">
+          <div class="period-tabs" style="margin:0">
+            <button class="period-tab active" id="publi-tab-hoy"    onclick="setPubliRango('hoy')">Hoy</button>
+            <button class="period-tab"        id="publi-tab-semana" onclick="setPubliRango('semana')">Semana</button>
+            <button class="period-tab"        id="publi-tab-mes"    onclick="setPubliRango('mes')">Mes</button>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="renderPublicidad()" title="Refrescar"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+      </div>
+
+      <!-- Tarjetas resumen -->
+      <div class="stats-row stats-4 mb-16">
+        <div class="stat-card"><div class="stat-icon" style="background:#ede9fe;color:#6366f1"><i class="bi bi-cash-coin"></i></div><div class="stat-label">Gasto</div><div class="stat-value" id="publi-s-gasto">—</div><div class="stat-sub" id="publi-s-gasto-sub">en el período</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#dbeafe;color:#3b82f6"><i class="bi bi-chat-dots-fill"></i></div><div class="stat-label">Mensajes</div><div class="stat-value" id="publi-s-msg">—</div><div class="stat-sub" id="publi-s-msg-sub">$/conversación: —</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#dcfce7;color:#10b981"><i class="bi bi-graph-up"></i></div><div class="stat-label">Utilidad (entregado)</div><div class="stat-value" id="publi-s-util">—</div><div class="stat-sub" id="publi-s-util-sub">en ruta: —</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#fee2e2;color:#ef4444"><i class="bi bi-speedometer2"></i></div><div class="stat-label">ROAS entregado</div><div class="stat-value" id="publi-s-roas">—</div><div class="stat-sub" id="publi-s-roas-sub">en ruta: —</div></div>
+      </div>
+
+      <!-- Alertas (presupuesto / KPIs en rojo) -->
+      <div id="publi-alertas-wrap" style="display:none" class="mb-16"></div>
+
+      <!-- Tabla por vendedor -->
+      <div class="card mb-16">
+        <div class="flex-between mb-12">
+          <div><div class="card-title">Por vendedor (= campaña)</div><div class="card-sub">Cruce con pedidos de la app</div></div>
+        </div>
+        <div id="publi-vendedores" class="table-wrap"></div>
+      </div>
+
+      <!-- Tabla por modelo -->
+      <div class="card mb-20">
+        <div class="flex-between mb-12">
+          <div><div class="card-title">Por modelo (= conjunto de anuncios)</div><div class="card-sub">Utilidad real cruzada con ventas</div></div>
+        </div>
+        <div id="publi-modelos" class="table-wrap"></div>
+      </div>
+
+      <!-- Estado vacío / esperando n8n -->
+      <div class="card" id="publi-empty" style="display:none">
+        <div class="empty">
+          <div class="empty-icon"><i class="bi bi-cloud-arrow-down" style="font-size:38px;color:var(--muted)"></i></div>
+          <h3>Esperando datos de n8n</h3>
+          <p style="font-size:12px;color:var(--muted);margin-top:6px;max-width:480px;margin-left:auto;margin-right:auto">El panel se llena cuando n8n escriba en <code>titanbotas/publicidad/snapshot</code>. Hasta entonces, esta sección es solo el visor.</p>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -1541,11 +1612,11 @@ function showApp() {
 // ════════════════════════════════════════
 let currentPage='dashboard', dashChart=null, dashBodegaChart=null, reportPeriod=7, reportProdChart=null, reportDeptoChart=null;
 
-const PAGE_TITLES={dashboard:'Dashboard',productos:'Productos',entrada:'Entrada de Stock',salida:'Salida de Stock',importar:'Importar desde Excel',historial:'Historial',reportes:'Reportes',alertas:'Alertas',usuarios:'Usuarios','nuevo-pedido':'Nuevo Pedido','mis-pedidos':'Mis Pedidos','admin-pedidos':'Todos los Pedidos',guias:'Gestión de Guías'};
+const PAGE_TITLES={dashboard:'Dashboard',productos:'Productos',entrada:'Entrada de Stock',salida:'Salida de Stock',importar:'Importar desde Excel',historial:'Historial',reportes:'Reportes',alertas:'Alertas',usuarios:'Usuarios','nuevo-pedido':'Nuevo Pedido','mis-pedidos':'Mis Pedidos','admin-pedidos':'Todos los Pedidos',guias:'Gestión de Guías',publicidad:'Publicidad'};
 
 function navigate(page) {
   closeSidebar();
-  const adminPages=['productos','importar','historial','reportes','alertas','usuarios','admin-pedidos','guias','entrada','salida'];
+  const adminPages=['productos','importar','historial','reportes','alertas','usuarios','admin-pedidos','guias','entrada','salida','publicidad'];
   const vendorPages=['nuevo-pedido','mis-pedidos'];
   if (!isAdmin() && adminPages.includes(page)) return;
   if (!isAdmin() && !isVendedor() && vendorPages.includes(page)) return;
@@ -1567,6 +1638,7 @@ function navigate(page) {
   if(page==='mis-pedidos')     { const f=document.getElementById('filter-mis-pedidos'); if(f&&!f.value) f.value=''; renderMisPedidos(); }
   if(page==='admin-pedidos')   renderAdminPedidos();
   if(page==='guias')           renderGuias();
+  if(page==='publicidad')      renderPublicidad();
 }
 
 function refreshPage() {
@@ -1579,6 +1651,7 @@ function refreshPage() {
   else if (currentPage==='mis-pedidos')  renderMisPedidos();
   else if (currentPage==='admin-pedidos') renderAdminPedidos();
   else if (currentPage==='guias') { if(document.getElementById('guias-tabla')) renderGuiasTabla(); else renderGuias(); }
+  else if (currentPage==='publicidad') renderPublicidad();
   updateBadges();
 }
 
@@ -2586,6 +2659,45 @@ function selPares(n,btn){
 // ── Carrito de compras ─────────────────────
 let carrito=[];
 
+// ── Tipo de venta: individual / combo (2) / trío (3) ──────────────────
+// En combo/trío el precio se define UNA sola vez para todo el grupo (no por
+// ítem). Eso deja el dato limpio: revenue = comboPrecio, costo = suma de los
+// costos de cada componente. Sin trucos de $1 ni descuentos manuales.
+let tipoVenta='individual';
+let comboPrecio=0;
+const COMBO_N={individual:0,combo:2,trio:3};
+
+function setTipoVenta(t,btn){
+  tipoVenta=t; comboPrecio=0; carrito=[];
+  document.querySelectorAll('.tventa-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const cp=document.getElementById('combo-precio'); if(cp) cp.value='';
+  const cps=document.getElementById('combo-precio-status'); if(cps) cps.innerHTML='';
+  const hint=document.getElementById('tipo-venta-hint');
+  const precioG=document.getElementById('cart-precio')?.closest('.form-group');
+  if(t==='individual'){
+    if(hint){hint.style.display='none';}
+    if(precioG) precioG.style.display='block';
+  } else {
+    const n=COMBO_N[t];
+    if(hint){hint.style.display='block';hint.textContent=`Agrega los ${n} productos del ${t}. El precio se pone una sola vez abajo, en el carrito.`;}
+    if(precioG) precioG.style.display='none';
+  }
+  renderCarrito();
+}
+
+function onComboPrecioInput(){
+  comboPrecio=parseFloat(document.getElementById('combo-precio').value)||0;
+  const st=document.getElementById('combo-precio-status');
+  const refTotal=carrito.reduce((s,i)=>s+(i.precioRegistrado||0)*i.cantidad,0);
+  if(st){
+    if(!comboPrecio||!refTotal){st.innerHTML='';}
+    else if(comboPrecio<refTotal){st.innerHTML=`<span class="addr-warn" style="font-size:11px"><i class="bi bi-info-circle"></i> Suma por separado: ${fmtM(refTotal)}</span>`;}
+    else {st.innerHTML='';}
+  }
+  renderCarrito();
+}
+
 function agregarAlCarrito(){
   const pid=document.getElementById('ped-prod').value;
   const vid=document.getElementById('ped-var').value;
@@ -2594,8 +2706,17 @@ function agregarAlCarrito(){
   const v=p?.variantes.find(x=>x.id===vid);
   if(!v){return;}
   if((v.stockActual||0)===0){toast('Sin stock disponible para esta variante');return;}
-  const precio=parseFloat(document.getElementById('cart-precio').value)||0;
-  if(!precio){toast('Ingresa el precio de venta');return;}
+  // En combo/trío el precio se define una sola vez para el grupo; en
+  // individual se exige por ítem como siempre.
+  let precio;
+  if(tipoVenta==='individual'){
+    precio=parseFloat(document.getElementById('cart-precio').value)||0;
+    if(!precio){toast('Ingresa el precio de venta');return;}
+  } else {
+    const max=COMBO_N[tipoVenta];
+    if(carrito.length>=max){toast(`Un ${tipoVenta} lleva ${max} productos. Ya están agregados.`);return;}
+    precio=v.precio||0; // precio de referencia; el total va en el precio del combo
+  }
   const cantidad=paresSeleccionados||1;
   carrito.push({
     pid,vid,
@@ -2604,8 +2725,8 @@ function agregarAlCarrito(){
     cantidad,
     precio,
     precioRegistrado:v.precio||0,
-    precioBajo:!!(v.precio&&precio<v.precio),
-    precioAlto:!!(v.precio&&precio>v.precio)
+    precioBajo:tipoVenta==='individual'&&!!(v.precio&&precio<v.precio),
+    precioAlto:tipoVenta==='individual'&&!!(v.precio&&precio>v.precio)
   });
   renderCarrito();
   // Reset selección de producto para agregar otro
@@ -2652,7 +2773,20 @@ function renderCarrito(){
       </button>
     </div>`;
   }).join('');
-  unlockPedidoStep2();
+  // ── Estado del modo combo/trío ────────────────────────────────────
+  const comboG=document.getElementById('combo-precio-g');
+  const badge=document.getElementById('carrito-combo-badge');
+  if(tipoVenta!=='individual'){
+    const n=COMBO_N[tipoVenta];
+    if(comboG) comboG.style.display='block';
+    const tlabel=document.getElementById('combo-precio-tipo'); if(tlabel) tlabel.textContent=tipoVenta;
+    if(badge){badge.style.display='inline-flex';badge.textContent=(tipoVenta==='combo'?'COMBO':'TRÍO')+` ${carrito.length}/${n}`;}
+    if(carrito.length===n && comboPrecio>0){ unlockPedidoStep2(); } else { lockPedidoStep2(); }
+  } else {
+    if(comboG) comboG.style.display='none';
+    if(badge) badge.style.display='none';
+    unlockPedidoStep2();
+  }
 }
 
 // ── Tipo de destino ────────────────────────
@@ -2842,6 +2976,11 @@ function aplicarEntradaStockPedido(ped, motivo){
 
 function registrarPedido(){
   if(!carrito.length){toast('Agrega al menos un producto al carrito');return;}
+  if(tipoVenta!=='individual'){
+    const n=COMBO_N[tipoVenta];
+    if(carrito.length!==n){toast(`Un ${tipoVenta} debe tener exactamente ${n} productos.`);return;}
+    if(!comboPrecio||comboPrecio<=0){toast('Ingresa el precio del '+tipoVenta);return;}
+  }
   const nombre=document.getElementById('ped-nombre').value.trim();
   const tel=document.getElementById('ped-tel').value.trim();
   const cedula=document.getElementById('ped-cedula')?.value.trim()||'';
@@ -2918,7 +3057,9 @@ function registrarPedido(){
     productoNombre: items.length===1 ? items[0].productoNombre : items.map(i=>i.productoNombre).join(' + '),
     talla:items[0].talla, color:items[0].color, sku:items[0].sku||'',
     cantidadPares:items.reduce((s,i)=>s+i.cantidad,0),
-    precioVenta:items.reduce((s,i)=>s+i.precioVenta*i.cantidad,0),
+    tipoVenta,
+    comboPrecio: tipoVenta!=='individual' ? comboPrecio : 0,
+    precioVenta: tipoVenta!=='individual' ? comboPrecio : items.reduce((s,i)=>s+i.precioVenta*i.cantidad,0),
     precioBajo:hayPrecioBajo, precioAlto:hayPrecioAlto,
     cliente:clienteInfo,
     formaPago,
@@ -2962,6 +3103,14 @@ function registrarPedido(){
   paresSeleccionados=1;
   document.querySelectorAll('.par-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
   document.getElementById('ped-pares-custom').style.display='none';
+  // Reset del modo combo/trío a individual
+  tipoVenta='individual'; comboPrecio=0;
+  document.querySelectorAll('.tventa-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  const cpg=document.getElementById('combo-precio-g'); if(cpg) cpg.style.display='none';
+  const cpv=document.getElementById('combo-precio'); if(cpv) cpv.value='';
+  const cbb=document.getElementById('carrito-combo-badge'); if(cbb) cbb.style.display='none';
+  const tvh=document.getElementById('tipo-venta-hint'); if(tvh) tvh.style.display='none';
+  const precioGr=document.getElementById('cart-precio')?.closest('.form-group'); if(precioGr) precioGr.style.display='block';
   lockPedidoStep2();
 }
 
@@ -3184,9 +3333,14 @@ function renderAdminPedidos(){
         ?`<div style="font-size:10px;color:#3b82f6;margin-top:2px" title="Precio sobre el registrado"><i class="bi bi-arrow-up-circle-fill"></i> Alto</div>`
         :'';
     const paresInfo=ped.cantidadPares&&ped.cantidadPares>1?`<div style="font-size:10px;color:var(--muted)">${ped.cantidadPares} pares</div>`:'';
+    const comboBadge=ped.tipoVenta==='combo'
+      ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo combo (2 productos a un precio único)"><i class="bi bi-box-seam-fill"></i> COMBO</span>`
+      :ped.tipoVenta==='trio'
+        ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo trío (3 productos a un precio único)"><i class="bi bi-boxes"></i> TRÍO</span>`
+        :'';
     html+=`<tr${ped.precioBajo?' style="background:#fffbeb"':''}>
       <td style="white-space:nowrap;font-size:12px">${fmtD(ped.fecha)}${ped.ts?`<div style="font-size:10px;color:var(--muted);margin-top:2px"><i class="bi bi-clock"></i> ${fmtT(ped.ts)}</div>`:''}</td>
-      <td><div style="font-size:13px">${pedResumen(ped)}</div>${paresInfo}</td>
+      <td><div style="font-size:13px">${pedResumen(ped)}${comboBadge}</div>${paresInfo}</td>
       <td><strong>${ped.cliente.nombre}</strong><div style="font-size:11px;color:var(--muted)">${ped.cliente.telefono}</div>
           <div style="font-size:10px;color:var(--muted)">${ped.cliente.barrio||''}${ped.cliente.ciudad?', '+ped.cliente.ciudad:''}</div></td>
       <td style="font-size:12px">${ped.cliente.ciudad||'—'}</td>
@@ -4448,7 +4602,7 @@ function renderPickerProductos(){
   const cat=document.getElementById('picker-cat')?.value||'';
   let prods=getProds();
   if(q) prods=prods.filter(p=>p.nombre.toLowerCase().includes(q)||(p.categoria||'').toLowerCase().includes(q));
-  if(cat) prods=prods.filter(p=>(p.categoria||''===cat||p.categoria===cat));
+  if(cat) prods=prods.filter(p=>(p.categoria||'Sin categoría')===cat);
   const grid=document.getElementById('picker-grid'); if(!grid) return;
   if(!prods.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon"><i class="bi bi-search"></i></div><h3>Sin resultados</h3></div>';return;}
   grid.innerHTML=prods.map((p,i)=>{
@@ -4659,6 +4813,233 @@ function toggleCiudadBloqueo(ciudad,dpto,bloqActual){
   }
   renderCiudadesModal();
   toast(bloqActual?`${ciudad} reactivada`:`${ciudad} bloqueada`);
+}
+
+// ════════════════════════════════════════
+//  PUBLICIDAD — visor del snapshot que escribe n8n
+// ════════════════════════════════════════
+// Contrato Firebase: titanbotas/publicidad/snapshot
+// {
+//   updatedAt: <ms timestamp>,
+//   rangos: {
+//     hoy:    { gastoTotal, mensajesTotal, ventaEntregada, ventaEnRuta,
+//               costoEntregado, costoEnRuta, vendedores:[...], modelos:[...] },
+//     semana: { ...mismo formato },
+//     mes:    { ...mismo formato }
+//   }
+// }
+// Cada vendedor: { nombre, campañaId, gasto, mensajes, ventaEntregada,
+//                  ventaEnRuta, costoEntregado, costoEnRuta, ctr, cpm, cpc,
+//                  presupuestoDiario, gastoHoy, antiguedadDias, estado }
+// Cada modelo:   { modelo, gasto, mensajes, paresVendidos, ventaEntregada,
+//                  ventaEnRuta, costoEntregado, costoEnRuta }
+//
+// Mientras n8n no escriba, mostramos el estado vacío con instrucción clara.
+
+let _publiSnap=null;
+let _publiRango='hoy';
+const KPI_UMBRALES={
+  ctrAlerta:0.8,   // <0.8% creativo no engancha
+  cpmMax:15000,    // CPM>15k es caro
+  cpcMax:1500,     // CPC>1500 es caro
+  presupuestoAlerta:0.8 // 80% del tope diario → amarillo
+};
+
+function setPubliRango(r){
+  _publiRango=r;
+  ['hoy','semana','mes'].forEach(k=>{
+    const b=document.getElementById('publi-tab-'+k);
+    if(b) b.classList.toggle('active',k===r);
+  });
+  renderPublicidadCuerpo();
+}
+
+function renderPublicidad(){
+  // Si Firebase está activo, nos suscribimos una sola vez al snapshot.
+  if(USE_FIREBASE && !window._publiSubscribed){
+    try{
+      db.ref('titanbotas/publicidad/snapshot').on('value', snap=>{
+        _publiSnap=snap.val()||null;
+        if(currentPage==='publicidad') renderPublicidadCuerpo();
+      });
+      window._publiSubscribed=true;
+    }catch(e){console.warn('No se pudo suscribir a publicidad/snapshot',e);}
+  }
+  renderPublicidadCuerpo();
+}
+
+function renderPublicidadCuerpo(){
+  const empty=document.getElementById('publi-empty');
+  const sync=document.getElementById('publi-last-sync');
+  const data=_publiSnap?.rangos?.[_publiRango];
+  if(!_publiSnap || !data){
+    if(empty) empty.style.display='block';
+    if(sync)  sync.textContent='Esperando datos de n8n…';
+    // Vaciar tarjetas
+    ['publi-s-gasto','publi-s-msg','publi-s-util','publi-s-roas'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.textContent='—';
+    });
+    ['publi-s-gasto-sub','publi-s-msg-sub','publi-s-util-sub','publi-s-roas-sub'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.textContent='—';
+    });
+    const vt=document.getElementById('publi-vendedores'); if(vt) vt.innerHTML='';
+    const mt=document.getElementById('publi-modelos'); if(mt) mt.innerHTML='';
+    const aw=document.getElementById('publi-alertas-wrap'); if(aw){aw.style.display='none';aw.innerHTML='';}
+    return;
+  }
+  if(empty) empty.style.display='none';
+  if(sync){
+    const dt=new Date(_publiSnap.updatedAt||Date.now());
+    sync.textContent='Actualizado: '+dt.toLocaleString('es-CO');
+  }
+  // Tarjetas resumen
+  const gasto=data.gastoTotal||0;
+  const msg=data.mensajesTotal||0;
+  const ventaEnt=data.ventaEntregada||0;
+  const ventaRuta=data.ventaEnRuta||0;
+  const costoEnt=data.costoEntregado||0;
+  const costoRuta=data.costoEnRuta||0;
+  const utilEnt=ventaEnt-costoEnt-gasto;
+  const utilRuta=ventaRuta-costoRuta; // gasto ya descontado en utilEnt
+  const roasEnt=gasto>0?(ventaEnt/gasto):0;
+  const roasRuta=gasto>0?(ventaRuta/gasto):0;
+  const cpc=msg>0?(gasto/msg):0;
+  document.getElementById('publi-s-gasto').textContent=fmtM(gasto);
+  document.getElementById('publi-s-msg').textContent=fmtN(msg);
+  document.getElementById('publi-s-msg-sub').textContent='$/conversación: '+(cpc?fmtM(Math.round(cpc)):'—');
+  document.getElementById('publi-s-util').textContent=fmtM(utilEnt);
+  document.getElementById('publi-s-util').className='stat-value '+(utilEnt>=0?'text-success':'text-danger');
+  document.getElementById('publi-s-util-sub').textContent='En ruta: '+fmtM(utilRuta);
+  document.getElementById('publi-s-roas').textContent=roasEnt?roasEnt.toFixed(2)+'x':'—';
+  document.getElementById('publi-s-roas').className='stat-value '+(roasEnt>=2?'text-success':roasEnt>=1?'text-warning':'text-danger');
+  document.getElementById('publi-s-roas-sub').textContent='En ruta: '+(roasRuta?roasRuta.toFixed(2)+'x':'—');
+
+  renderPubliVendedores(data.vendedores||[]);
+  renderPubliModelos(data.modelos||[]);
+  renderPubliAlertas(data.vendedores||[]);
+}
+
+function pubBadgeKPI(label,val,bueno,malo,fmt){
+  // bueno/malo: funciones (val)=>bool. Verde si bueno, rojo si malo, amarillo si nada.
+  const txt=fmt?fmt(val):val;
+  let cls='badge-gray';
+  if(bueno(val)) cls='badge-success';
+  else if(malo(val)) cls='badge-danger';
+  else cls='badge-warning';
+  return `<span class="badge ${cls}" title="${label}">${txt}</span>`;
+}
+
+function renderPubliVendedores(rows){
+  const el=document.getElementById('publi-vendedores');
+  if(!rows.length){ el.innerHTML='<div class="empty"><h3>Sin datos de vendedores</h3></div>'; return; }
+  // Ordenar por gasto descendente
+  rows=[...rows].sort((a,b)=>(b.gasto||0)-(a.gasto||0));
+  let html=`<table><thead><tr>
+    <th>Vendedor</th><th>Estado</th><th>Antig.</th><th>Gasto</th><th>Presup.</th>
+    <th>Mensajes</th><th>$/conv</th><th>CTR</th><th>CPM</th><th>CPC</th>
+    <th>Venta entreg.</th><th>Venta en ruta</th><th>Utilidad</th><th>ROAS entreg.</th>
+  </tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const gasto=r.gasto||0, msg=r.mensajes||0;
+    const ventaEnt=r.ventaEntregada||0, ventaRuta=r.ventaEnRuta||0;
+    const costoEnt=r.costoEntregado||0;
+    const util=ventaEnt-costoEnt-gasto;
+    const roas=gasto>0?(ventaEnt/gasto):0;
+    const cpconv=msg>0?(gasto/msg):0;
+    // Presupuesto: si tenemos diario y gastoHoy, calculamos %
+    let presupBadge='—';
+    if(r.presupuestoDiario && r.gastoHoy!=null){
+      const pct=r.gastoHoy/r.presupuestoDiario;
+      const cls=pct>=0.95?'badge-danger':pct>=KPI_UMBRALES.presupuestoAlerta?'badge-warning':'badge-success';
+      presupBadge=`<span class="badge ${cls}">${Math.round(pct*100)}%</span>`;
+    }
+    const estado=(r.estado||'').toUpperCase()==='ACTIVE'
+      ? '<span class="badge badge-success">Activa</span>'
+      : '<span class="badge badge-gray">Pausada</span>';
+    const ctr=r.ctr||0, cpm=r.cpm||0, cpc=r.cpc||0;
+    html+=`<tr>
+      <td><strong>${r.nombre||'—'}</strong></td>
+      <td>${estado}</td>
+      <td style="font-size:12px;color:var(--muted)">${r.antiguedadDias!=null?r.antiguedadDias+' d':'—'}</td>
+      <td style="white-space:nowrap">${fmtM(gasto)}</td>
+      <td>${presupBadge}</td>
+      <td>${fmtN(msg)}</td>
+      <td>${cpconv?fmtM(Math.round(cpconv)):'—'}</td>
+      <td>${pubBadgeKPI('CTR',ctr,v=>v>=1.2,v=>v>0&&v<KPI_UMBRALES.ctrAlerta,v=>v.toFixed(2)+'%')}</td>
+      <td>${pubBadgeKPI('CPM',cpm,v=>v>0&&v<=KPI_UMBRALES.cpmMax,v=>v>KPI_UMBRALES.cpmMax,v=>v?fmtM(Math.round(v)):'—')}</td>
+      <td>${pubBadgeKPI('CPC',cpc,v=>v>0&&v<=KPI_UMBRALES.cpcMax,v=>v>KPI_UMBRALES.cpcMax,v=>v?fmtM(Math.round(v)):'—')}</td>
+      <td style="white-space:nowrap">${fmtM(ventaEnt)}</td>
+      <td style="white-space:nowrap;color:var(--muted)">${fmtM(ventaRuta)}</td>
+      <td style="white-space:nowrap" class="${util>=0?'text-success':'text-danger'}"><strong>${fmtM(util)}</strong></td>
+      <td><strong class="${roas>=2?'text-success':roas>=1?'text-warning':'text-danger'}">${roas?roas.toFixed(2)+'x':'—'}</strong></td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+function renderPubliModelos(rows){
+  const el=document.getElementById('publi-modelos');
+  if(!rows.length){ el.innerHTML='<div class="empty"><h3>Sin datos por modelo</h3><p style="font-size:11px;color:var(--muted);margin-top:4px">n8n calcula esto agrupando conjuntos de anuncios por el diccionario de modelos.</p></div>'; return; }
+  rows=[...rows].sort((a,b)=>{
+    const ua=(a.ventaEntregada||0)-(a.costoEntregado||0)-(a.gasto||0);
+    const ub=(b.ventaEntregada||0)-(b.costoEntregado||0)-(b.gasto||0);
+    return ub-ua;
+  });
+  let html=`<table><thead><tr>
+    <th>Modelo</th><th>Gasto</th><th>Mensajes</th><th>Pares</th>
+    <th>Venta entreg.</th><th>Venta en ruta</th><th>Utilidad</th><th>ROAS entreg.</th>
+  </tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const gasto=r.gasto||0;
+    const ventaEnt=r.ventaEntregada||0, ventaRuta=r.ventaEnRuta||0;
+    const costoEnt=r.costoEntregado||0;
+    const util=ventaEnt-costoEnt-gasto;
+    const roas=gasto>0?(ventaEnt/gasto):0;
+    html+=`<tr>
+      <td><strong>${r.modelo||'—'}</strong></td>
+      <td style="white-space:nowrap">${fmtM(gasto)}</td>
+      <td>${fmtN(r.mensajes||0)}</td>
+      <td>${fmtN(r.paresVendidos||0)}</td>
+      <td style="white-space:nowrap">${fmtM(ventaEnt)}</td>
+      <td style="white-space:nowrap;color:var(--muted)">${fmtM(ventaRuta)}</td>
+      <td style="white-space:nowrap" class="${util>=0?'text-success':'text-danger'}"><strong>${fmtM(util)}</strong></td>
+      <td><strong class="${roas>=2?'text-success':roas>=1?'text-warning':'text-danger'}">${roas?roas.toFixed(2)+'x':'—'}</strong></td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+function renderPubliAlertas(rows){
+  const wrap=document.getElementById('publi-alertas-wrap');
+  if(!wrap) return;
+  const alertas=[];
+  rows.forEach(r=>{
+    if(r.presupuestoDiario && r.gastoHoy!=null){
+      const pct=r.gastoHoy/r.presupuestoDiario;
+      if(pct>=KPI_UMBRALES.presupuestoAlerta){
+        const grave=pct>=0.95;
+        alertas.push({tipo:grave?'danger':'warning',texto:`<strong>${r.nombre}</strong> consumió ${Math.round(pct*100)}% del presupuesto diario (${fmtM(r.gastoHoy)} de ${fmtM(r.presupuestoDiario)})`});
+      }
+    }
+    if((r.ctr||0)>0 && r.ctr<KPI_UMBRALES.ctrAlerta){
+      alertas.push({tipo:'warning',texto:`<strong>${r.nombre}</strong>: CTR en ${r.ctr.toFixed(2)}% — creativo no engancha`});
+    }
+    if((r.cpc||0)>KPI_UMBRALES.cpcMax){
+      alertas.push({tipo:'warning',texto:`<strong>${r.nombre}</strong>: CPC ${fmtM(Math.round(r.cpc))} — sobre el umbral`});
+    }
+  });
+  if(!alertas.length){ wrap.style.display='none'; wrap.innerHTML=''; return; }
+  wrap.style.display='block';
+  const badgeNum=document.getElementById('badge-publi');
+  if(badgeNum){ badgeNum.textContent=alertas.length; badgeNum.style.display='inline-block'; }
+  wrap.innerHTML=alertas.map(a=>{
+    const bg=a.tipo==='danger'?'#fee2e2':'#fef3c7';
+    const bd=a.tipo==='danger'?'#ef4444':'#f59e0b';
+    const ic=a.tipo==='danger'?'bi-exclamation-octagon-fill':'bi-exclamation-triangle-fill';
+    return `<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px"><i class="bi ${ic}" style="color:${bd}"></i> ${a.texto}</div>`;
+  }).join('');
 }
 
 // ════════════════════════════════════════
