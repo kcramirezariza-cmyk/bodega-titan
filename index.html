@@ -122,6 +122,8 @@ td{padding:11px 13px;vertical-align:middle}
 .badge-cancelado{background:#f1f5f9;color:#475569}
 .badge-pendiente{background:#fde68a;color:#78350f}
 .badge-aprobado{background:#d1fae5;color:#065f46}
+.badge-en-oficina{background:#cffafe;color:#155e75}
+.badge-en-devolucion{background:#ffedd5;color:#9a3412}
 .order-step{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--border)}
 .order-step:last-child{border-bottom:none}
 .step-num{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -829,9 +831,11 @@ textarea{resize:vertical}
             <option value="">Todos los estados</option>
             <option value="pendiente">Pendiente</option>
             <option value="aprobado">Aprobado</option>
-            <option value="enviado">Enviado</option>
+            <option value="enviado">En tránsito</option>
+            <option value="en_oficina">En oficina</option>
             <option value="entregado">Entregado</option>
             <option value="novedad">Novedad</option>
+            <option value="en_devolucion">En devolución</option>
             <option value="cancelado">Cancelado</option>
           </select>
         </div>
@@ -848,9 +852,11 @@ textarea{resize:vertical}
             <option value="">Todos los estados</option>
             <option value="pendiente">Pendiente</option>
             <option value="aprobado">Aprobado</option>
-            <option value="enviado">Enviado</option>
+            <option value="enviado">En tránsito</option>
+            <option value="en_oficina">En oficina</option>
             <option value="entregado">Entregado</option>
             <option value="novedad">Novedad</option>
+            <option value="en_devolucion">En devolución</option>
             <option value="cancelado">Cancelado</option>
           </select>
           <select id="filter-admin-vendedor" onchange="renderAdminPedidos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
@@ -907,6 +913,11 @@ textarea{resize:vertical}
             <button class="period-tab"        id="publi-tab-semana" onclick="setPubliRango('semana')">Semana</button>
             <button class="period-tab"        id="publi-tab-mes"    onclick="setPubliRango('mes')">Mes</button>
           </div>
+          <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:4px 8px" title="Filtrar por día específico">
+            <i class="bi bi-calendar-event" style="color:var(--primary)"></i>
+            <input type="date" id="publi-filtro-fecha" onchange="setPubliFecha(this.value)" style="border:none;background:transparent;font-size:13px;padding:3px 4px;width:140px">
+            <button class="btn-icon" onclick="setPubliFecha('')" title="Quitar fecha" style="padding:2px 4px"><i class="bi bi-x-lg" style="font-size:11px"></i></button>
+          </div>
           <button class="btn btn-outline btn-sm" onclick="renderPublicidad()" title="Refrescar"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
@@ -930,10 +941,21 @@ textarea{resize:vertical}
         <div id="publi-vendedores" class="table-wrap"></div>
       </div>
 
+      <!-- Tabla: modelos activos por vendedor -->
+      <div class="card mb-16">
+        <div class="flex-between mb-12">
+          <div>
+            <div class="card-title">Modelos publicados por vendedor — activos</div>
+            <div class="card-sub">Solo campañas/anuncios ACTIVOS. Las publicidades ancladas (desactivadas) no se cuentan.</div>
+          </div>
+        </div>
+        <div id="publi-modelos-vendedor" class="table-wrap"></div>
+      </div>
+
       <!-- Tabla por modelo -->
       <div class="card mb-20">
         <div class="flex-between mb-12">
-          <div><div class="card-title">Por modelo (= conjunto de anuncios)</div><div class="card-sub">Utilidad real cruzada con ventas</div></div>
+          <div><div class="card-title">Por modelo (= conjunto de anuncios)</div><div class="card-sub">Utilidad real cruzada con ventas — todos los colores integrados en un modelo</div></div>
         </div>
         <div id="publi-modelos" class="table-wrap"></div>
       </div>
@@ -1137,14 +1159,23 @@ textarea{resize:vertical}
       <button class="btn-icon" onclick="cerrarModal('modal-estado-pedido')">✕</button>
     </div>
     <div class="form-group"><label>Nuevo estado</label>
-      <select id="nuevo-estado-ped">
+      <select id="nuevo-estado-ped" onchange="onCambioEstadoSel()">
         <option value="pendiente">Pendiente</option>
         <option value="aprobado">Aprobado</option>
-        <option value="enviado">Enviado</option>
+        <option value="enviado">En tránsito</option>
+        <option value="en_oficina">En oficina</option>
         <option value="entregado">Entregado</option>
         <option value="novedad">Novedad</option>
+        <option value="en_devolucion">En devolución</option>
         <option value="cancelado">Cancelado</option>
       </select>
+    </div>
+    <div class="form-group" id="devolucion-ingreso-g" style="display:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;margin:0">
+        <input type="checkbox" id="devolucion-ingreso-chk" style="width:auto;margin:0">
+        <span><i class="bi bi-box-arrow-in-down" style="color:#9a3412"></i> El producto ya ingresó a nuestra oficina (devolver al inventario)</span>
+      </label>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Marca esta casilla solo cuando la devolución haya llegado físicamente a tu ciudad. El stock se restituirá al inventario.</div>
     </div>
     <div class="form-group"><label>Nota interna (opcional)</label>
       <input type="text" id="nota-estado-ped" placeholder="Ej: Dirección incorrecta, cliente no contesta...">
@@ -1152,6 +1183,67 @@ textarea{resize:vertical}
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="cerrarModal('modal-estado-pedido')">Cancelar</button>
       <button class="btn btn-primary" onclick="confirmarCambioEstado()">Actualizar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR PEDIDO (admin) -->
+<div class="modal-overlay" id="modal-editar-pedido">
+  <div class="modal modal-lg" style="max-width:780px">
+    <div class="modal-header">
+      <div><div class="modal-title"><i class="bi bi-pencil-square"></i> Editar pedido</div><div class="modal-sub" id="ep-sub">Modifica los datos del pedido y de la guía</div></div>
+      <button class="btn-icon" onclick="cerrarModal('modal-editar-pedido')">✕</button>
+    </div>
+    <div style="padding:0">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:4px 0 8px"><i class="bi bi-person-vcard-fill"></i> Cliente y envío</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group"><label>Nombre *</label><input type="text" id="ep-nombre"></div>
+        <div class="form-group"><label>Teléfono *</label><input type="tel" id="ep-tel" maxlength="15"></div>
+        <div class="form-group"><label>Cédula</label><input type="text" id="ep-cedula" maxlength="15"></div>
+        <div class="form-group"><label>Forma de pago</label>
+          <select id="ep-forma-pago">
+            <option value="contraentrega">Contraentrega</option>
+            <option value="adelantado">Pago adelantado</option>
+            <option value="addi">Addi</option>
+            <option value="sistecredito">Sistecredito</option>
+            <option value="garantia">Garantía</option>
+            <option value="cambio">Cambio</option>
+            <option value="promocion">Promoción</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Dirección</label><input type="text" id="ep-dir"></div>
+        <div class="form-group"><label>Barrio</label><input type="text" id="ep-barrio"></div>
+        <div class="form-group"><label>Referencia</label><input type="text" id="ep-referencia"></div>
+        <div class="form-group"><label>Empresa / Oficina destino</label><input type="text" id="ep-empresa"></div>
+        <div class="form-group"><label>Ciudad</label><input type="text" id="ep-ciudad"></div>
+        <div class="form-group"><label>Departamento</label><input type="text" id="ep-dpto"></div>
+        <div class="form-group"><label>Localidad (Bogotá)</label><input type="text" id="ep-localidad"></div>
+        <div class="form-group"><label>Destino</label>
+          <select id="ep-destino-tipo">
+            <option value="domicilio">Domicilio</option>
+            <option value="oficina">Oficina</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label>Notas del cliente</label><textarea id="ep-notas" rows="2"></textarea></div>
+
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 8px"><i class="bi bi-box-seam-fill"></i> Productos</div>
+      <div id="ep-items-wrap"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+        <div class="form-group"><label>Precio total venta</label><input type="number" id="ep-precio" min="0" step="any"></div>
+        <div class="form-group"><label>Vendedor</label><input type="text" id="ep-vendedor"></div>
+      </div>
+
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 8px"><i class="bi bi-truck"></i> Guía de envío</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group"><label>Número de guía</label><input type="text" id="ep-guia-num" placeholder="Ej: 123456789012"></div>
+        <div class="form-group"><label>Transportadora</label><input type="text" id="ep-guia-trans" placeholder="Interrapidísimo"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:-4px">Si dejas el número vacío, se elimina la guía del pedido.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="cerrarModal('modal-editar-pedido')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEdicionPedido()"><i class="bi bi-check-lg"></i> Guardar cambios</button>
     </div>
   </div>
 </div>
@@ -1720,25 +1812,38 @@ function renderDashboard() {
     const pedHoy=getPedidos().filter(p=>p.fecha===today);
     const pedHoyEl=document.getElementById('dash-pedidos-hoy');
     const pedHoySub=document.getElementById('dash-pedidos-hoy-sub');
-    if(pedHoySub) pedHoySub.textContent=`${pedHoy.length} pedido${pedHoy.length!==1?'s':''} hoy — por vendedor`;
+    const vendedoresActivos=localUsers.filter(u=>u.rol==='vendedor' && u.activo!==false);
+    const porVendedor={};
+    pedHoy.forEach(p=>{
+      const vn=p.vendedorNombre||'Desconocido';
+      if(!porVendedor[vn]) porVendedor[vn]={total:0,pendientes:0,aprobados:0,otros:0,alertas:0};
+      porVendedor[vn].total++;
+      if(p.estado==='pendiente') porVendedor[vn].pendientes++;
+      else if(p.estado==='aprobado') porVendedor[vn].aprobados++;
+      else porVendedor[vn].otros++;
+      if(p.precioBajo) porVendedor[vn].alertas++;
+    });
+    const normNombre=s=>String(s||'').toLowerCase().trim();
+    const subieronNorm=new Set(Object.keys(porVendedor).map(normNombre));
+    const sinPedidos=vendedoresActivos.filter(v=>{
+      const n=normNombre(v.nombre), u=normNombre(v.username);
+      return !subieronNorm.has(n) && !subieronNorm.has(u);
+    });
+    if(pedHoySub){
+      const subCount=Object.keys(porVendedor).length;
+      pedHoySub.textContent=`${pedHoy.length} pedido${pedHoy.length!==1?'s':''} hoy · ${subCount} vendedor${subCount===1?'':'es'} con pedidos · ${sinPedidos.length} sin subir`;
+    }
     if(pedHoyEl){
+      let html='';
       if(!pedHoy.length){
-        pedHoyEl.innerHTML=`<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px"><i class="bi bi-inbox"></i> Sin pedidos registrados hoy</div>`;
+        html+=`<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px"><i class="bi bi-inbox"></i> Sin pedidos registrados hoy</div>`;
       } else {
-        const porVendedor={};
-        pedHoy.forEach(p=>{
-          const vn=p.vendedorNombre||'Desconocido';
-          if(!porVendedor[vn]) porVendedor[vn]={total:0,pendientes:0,aprobados:0,otros:0,alertas:0};
-          porVendedor[vn].total++;
-          if(p.estado==='pendiente') porVendedor[vn].pendientes++;
-          else if(p.estado==='aprobado') porVendedor[vn].aprobados++;
-          else porVendedor[vn].otros++;
-          if(p.precioBajo) porVendedor[vn].alertas++;
-        });
-        pedHoyEl.innerHTML=Object.entries(porVendedor).map(([vn,d])=>`
+        html+=Object.entries(porVendedor)
+          .sort((a,b)=>b[1].total-a[1].total)
+          .map(([vn,d])=>`
           <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
             <div>
-              <div style="font-size:13px;font-weight:600">${vn}</div>
+              <div style="font-size:13px;font-weight:600"><i class="bi bi-check-circle-fill" style="color:var(--success);font-size:12px"></i> ${vn}</div>
               <div style="font-size:11px;color:var(--muted)">${d.total} pedido${d.total!==1?'s':''} · ${d.pendientes} pendiente${d.pendientes!==1?'s':''} · ${d.aprobados} aprobado${d.aprobados!==1?'s':''}</div>
             </div>
             <div style="display:flex;align-items:center;gap:6px">
@@ -1747,6 +1852,22 @@ function renderDashboard() {
             </div>
           </div>`).join('');
       }
+      // Vendedores que NO subieron pedidos hoy
+      if(sinPedidos.length){
+        html+=`<div style="margin-top:14px;padding:10px 12px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px">
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px">
+            <i class="bi bi-exclamation-triangle-fill"></i> Sin pedidos hoy (${sinPedidos.length})
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${sinPedidos.map(v=>`<span class="badge" style="background:#fff;color:#92400e;border:1px solid #fde68a;font-size:11px"><i class="bi bi-person-fill"></i> ${v.nombre}</span>`).join('')}
+          </div>
+        </div>`;
+      } else if(vendedoresActivos.length){
+        html+=`<div style="margin-top:14px;padding:10px 12px;background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;font-size:12px;color:#065f46;display:flex;align-items:center;gap:6px">
+          <i class="bi bi-check-circle-fill"></i> Todos los vendedores activos subieron pedidos hoy
+        </div>`;
+      }
+      pedHoyEl.innerHTML=html;
     }
     // Sección "Pedidos Recientes" — pendientes y novedades
     const dpEl=document.getElementById('dash-pedidos');
@@ -3136,9 +3257,11 @@ function estadoBadge(estado){
   const map={
     pendiente:'<span class="badge badge-pendiente"><i class="bi bi-hourglass-split"></i> Pendiente</span>',
     aprobado:'<span class="badge badge-aprobado"><i class="bi bi-check-circle-fill"></i> Aprobado</span>',
-    enviado:'<span class="badge badge-enviado"><i class="bi bi-truck"></i> Enviado</span>',
+    enviado:'<span class="badge badge-enviado"><i class="bi bi-truck"></i> En tránsito</span>',
+    en_oficina:'<span class="badge badge-en-oficina"><i class="bi bi-building"></i> En oficina</span>',
     entregado:'<span class="badge badge-entregado"><i class="bi bi-house-check-fill"></i> Entregado</span>',
     novedad:'<span class="badge badge-novedad"><i class="bi bi-exclamation-triangle-fill"></i> Novedad</span>',
+    en_devolucion:'<span class="badge badge-en-devolucion"><i class="bi bi-arrow-return-left"></i> En devolución</span>',
     cancelado:'<span class="badge badge-cancelado"><i class="bi bi-x-circle-fill"></i> Cancelado</span>'
   };
   return map[estado]||`<span class="badge badge-gray">${estado}</span>`;
@@ -3170,17 +3293,7 @@ function renderMisPedidos(){
           <div style="font-weight:700;font-size:15px">${pedResumenCorto(ped)}</div>
           <div style="font-size:12px;color:var(--muted)">${Array.isArray(ped.items)&&ped.items.length>1?ped.items.length+' productos · ':('Talla '+ped.talla+' / '+ped.color+' · ')}${fmtD(ped.fecha)}${ped.ts?` · <i class="bi bi-clock"></i> ${fmtT(ped.ts)}`:''}</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">${(()=>{
-          const guia=getGuias().find(g=>g.pedidoId===ped.id);
-          if(!guia) return estadoBadge(ped.estado);
-          const ea=guia.estadoActual||'registrada';
-          if(ea==='entregada')   return estadoBadge('entregado');
-          if(ea==='novedad')     return estadoBadge('novedad');
-          if(ea==='devuelta')    return estadoBadge('cancelado');
-          if(ea==='en_bodega')   return '<span class="badge badge-info"><i class="bi bi-building"></i> En oficina</span>';
-          if(ea==='en_transito') return estadoBadge('enviado');
-          return estadoBadge('enviado');
-        })()}</div>
+        <div style="display:flex;gap:8px;align-items:center">${estadoBadge(estadoEfectivo(ped))}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-bottom:12px">
         <div><span style="color:var(--muted)">Cliente:</span> <strong>${ped.cliente.nombre}</strong></div>
@@ -3209,7 +3322,7 @@ function renderMisPedidos(){
 
 function renderMiniTracking(guia){
   const ea=guia.estadoActual||'registrada';
-  const badge=ea==='entregada'?estadoBadge('entregado'):ea==='novedad'?estadoBadge('novedad'):ea==='devuelta'?estadoBadge('cancelado'):ea==='en_bodega'?'<span class="badge badge-info"><i class="bi bi-building"></i> En oficina</span>':ea==='en_transito'?estadoBadge('enviado'):'<span class="badge badge-gray"><i class="bi bi-hourglass-split"></i> En camino</span>';
+  const badge=ea==='entregada'?estadoBadge('entregado'):ea==='novedad'?estadoBadge('novedad'):ea==='devuelta'?estadoBadge('cancelado'):ea==='en_bodega'?estadoBadge('en_oficina'):ea==='en_transito'?estadoBadge('enviado'):'<span class="badge badge-gray"><i class="bi bi-hourglass-split"></i> En camino</span>';
   const histReal=(guia.historial||[]).filter(h=>h.esReal);
   const ultimo=histReal[histReal.length-1];
   const fechaEst=guia.fechaEstimadaEntrega?`<div style="font-size:11px;color:var(--muted);margin-top:2px"><i class="bi bi-calendar-check"></i> Entrega est: ${guia.fechaEstimadaEntrega.slice(0,10)}</div>`:'';
@@ -3249,13 +3362,17 @@ function esMiPedido(p){
 }
 
 function estadoEfectivo(ped){
+  // Si admin marcó manualmente "en devolución", ese estado prevalece sobre la guía.
+  if(ped.estado==='en_devolucion') return 'en_devolucion';
   const guia=getGuias().find(g=>g.pedidoId===ped.id);
   if(!guia) return ped.estado;
   const ea=guia.estadoActual||'registrada';
   if(ea==='entregada')   return 'entregado';
   if(ea==='novedad')     return 'novedad';
   if(ea==='devuelta')    return 'cancelado';
-  return 'enviado'; // registrada, en_transito, en_bodega → enviado
+  if(ea==='en_bodega')   return 'en_oficina';
+  if(ea==='en_transito') return 'enviado';
+  return 'enviado'; // registrada → en tránsito
 }
 
 // ════════════════════════════════════════
@@ -3348,20 +3465,12 @@ function renderAdminPedidos(){
       <td style="font-size:12px;white-space:nowrap">${ped.precioVenta?fmtM(ped.precioVenta):'—'}${precioBadge}</td>
       <td style="font-size:12px;color:var(--muted)">${ped.vendedorNombre||'—'}</td>
       <td style="font-size:12px">${guia?`<span style="font-family:monospace">${guia.numero}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
-      <td>${(()=>{
-        if(!guia) return estadoBadge(ped.estado);
-        const ea=guia.estadoActual||'registrada';
-        if(ea==='entregada')   return estadoBadge('entregado');
-        if(ea==='novedad')     return estadoBadge('novedad');
-        if(ea==='devuelta')    return estadoBadge('cancelado');
-        if(ea==='en_bodega')   return '<span class="badge badge-info"><i class="bi bi-building"></i> En oficina</span>';
-        if(ea==='en_transito') return estadoBadge('enviado');
-        return estadoBadge('enviado'); // tiene guía = enviado
-      })()}</td>
+      <td>${estadoBadge(estadoEfectivo(ped))}</td>
       <td><div style="display:flex;gap:4px">
         ${ped.estado==='pendiente'?`<button class="btn-icon" title="Aprobar pedido" style="color:var(--success)" onclick="aprobarPedido('${ped.id}')"><i class="bi bi-check-circle-fill"></i></button>`:''}
         <button class="btn-icon" title="Ver detalle" onclick="verDetallePedido('${ped.id}')"><i class="bi bi-eye-fill"></i></button>
         <button class="btn-icon" title="Cambiar estado" onclick="abrirCambioEstado('${ped.id}')"><i class="bi bi-pencil-fill"></i></button>
+        ${isAdmin()?`<button class="btn-icon" title="Editar datos del pedido" style="color:var(--primary)" onclick="abrirEdicionPedido('${ped.id}')"><i class="bi bi-pencil-square"></i></button>`:''}
         ${!guia?`<button class="btn-icon" title="Asignar guía" onclick="abrirModalGuiaParaPedido('${ped.id}')"><i class="bi bi-truck"></i></button>`:''}
         ${isAdmin()?`<button class="btn-icon" title="Eliminar pedido" style="color:var(--danger)" onclick="eliminarPedidoGuia('${guia?guia.id:''}','${ped.id}')"><i class="bi bi-trash-fill"></i></button>`:''}
       </div></td>
@@ -3422,7 +3531,16 @@ function abrirCambioEstado(id){
   if(!ped)return;
   document.getElementById('nuevo-estado-ped').value=ped.estado;
   document.getElementById('nota-estado-ped').value=ped.notaEstado||'';
+  const chk=document.getElementById('devolucion-ingreso-chk');
+  if(chk) chk.checked=!!ped.devolucionIngresada;
+  onCambioEstadoSel();
   abrirModal('modal-estado-pedido');
+}
+
+function onCambioEstadoSel(){
+  const sel=document.getElementById('nuevo-estado-ped');
+  const grp=document.getElementById('devolucion-ingreso-g');
+  if(sel && grp) grp.style.display = sel.value==='en_devolucion' ? 'block' : 'none';
 }
 
 // Calcula el total de unidades de un pedido (soporta items[] y formato antiguo).
@@ -3438,8 +3556,10 @@ function confirmarCambioEstado(){
   if(!ped)return;
   const nuevoEstado=document.getElementById('nuevo-estado-ped').value;
   const nota=document.getElementById('nota-estado-ped').value.trim();
+  const devolucionIngresada=nuevoEstado==='en_devolucion' && document.getElementById('devolucion-ingreso-chk')?.checked;
   const estadoAnterior=ped.estado;
   const pedActualizado={...ped, estado:nuevoEstado, notaEstado:nota||undefined, tsEstado:Date.now()};
+  if(nuevoEstado==='en_devolucion') pedActualizado.devolucionIngresada=!!devolucionIngresada;
   let msgExtra='';
 
   // ── Ajustes de stock por cambio de estado ─────────────────────────
@@ -3470,9 +3590,148 @@ function confirmarCambioEstado(){
     }
   }
 
+  // ── Devolución: el stock vuelve al inventario solo cuando el producto
+  // llegó físicamente a nuestra oficina (checkbox del modal).
+  if(nuevoEstado==='en_devolucion' && devolucionIngresada && !ped.devolucionIngresada){
+    const debeRestituir = ped.stockDescontado!==false;
+    if(debeRestituir){
+      const unidades=totalUnidadesPedido(ped);
+      if(aplicarEntradaStockPedido(ped,'Devolucion')){
+        pedActualizado.stockDescontado=false;
+        msgExtra=` · +${unidades} unidad${unidades===1?'':'es'} ingresada${unidades===1?'':'s'} al inventario por devolución`;
+      } else {
+        msgExtra=' · ⚠️ ingreso a inventario falló';
+      }
+    } else {
+      msgExtra=' · (este pedido no tenía stock descontado)';
+    }
+  }
+
   writePedido(pedActualizado);
   toast(`Estado actualizado a: ${nuevoEstado}${msgExtra}`);
   cerrarModal('modal-estado-pedido');
+}
+
+// ────────────── EDICIÓN COMPLETA DE PEDIDO (ADMIN) ──────────────
+let _edicionPedidoId=null;
+function abrirEdicionPedido(id){
+  if(!isAdmin()){ toast('Solo el administrador puede editar pedidos'); return; }
+  const ped=getPedidos().find(p=>p.id===id);
+  if(!ped) return;
+  _edicionPedidoId=id;
+  const c=ped.cliente||{};
+  document.getElementById('ep-sub').textContent=`Pedido ${fmtD(ped.fecha)} · ${ped.vendedorNombre||'—'}`;
+  document.getElementById('ep-nombre').value=c.nombre||'';
+  document.getElementById('ep-tel').value=c.telefono||'';
+  document.getElementById('ep-cedula').value=c.cedula||'';
+  document.getElementById('ep-dir').value=c.direccion||'';
+  document.getElementById('ep-barrio').value=c.barrio||'';
+  document.getElementById('ep-referencia').value=c.referencia||'';
+  document.getElementById('ep-empresa').value=c.empresa||'';
+  document.getElementById('ep-ciudad').value=c.ciudad||'';
+  document.getElementById('ep-dpto').value=c.departamento||'';
+  document.getElementById('ep-localidad').value=c.localidad||'';
+  document.getElementById('ep-destino-tipo').value=c.destinoTipo||'domicilio';
+  document.getElementById('ep-notas').value=c.notas||'';
+  document.getElementById('ep-forma-pago').value=ped.formaPago||'contraentrega';
+  document.getElementById('ep-precio').value=ped.precioVenta||'';
+  document.getElementById('ep-vendedor').value=ped.vendedorNombre||'';
+  // Ítems
+  const items=Array.isArray(ped.items)&&ped.items.length
+    ? ped.items
+    : [{productoNombre:ped.productoNombre, talla:ped.talla, color:ped.color, sku:ped.sku||'', cantidad:ped.cantidadPares||1, precioVenta:ped.precioVenta}];
+  const wrap=document.getElementById('ep-items-wrap');
+  wrap.innerHTML=items.map((it,i)=>`
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Producto</label><input type="text" data-ep-it="${i}" data-ep-f="productoNombre" value="${(it.productoNombre||'').replace(/"/g,'&quot;')}"></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Talla</label><input type="text" data-ep-it="${i}" data-ep-f="talla" value="${(it.talla||'').toString().replace(/"/g,'&quot;')}"></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Color</label><input type="text" data-ep-it="${i}" data-ep-f="color" value="${(it.color||'').replace(/"/g,'&quot;')}"></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Cantidad</label><input type="number" min="1" data-ep-it="${i}" data-ep-f="cantidad" value="${it.cantidad||1}"></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Precio unit.</label><input type="number" min="0" data-ep-it="${i}" data-ep-f="precioVenta" value="${it.precioVenta||0}"></div>
+    </div>`).join('');
+  // Guía
+  const guia=getGuias().find(g=>g.pedidoId===ped.id);
+  document.getElementById('ep-guia-num').value=guia?guia.numero||'':'';
+  document.getElementById('ep-guia-trans').value=guia?guia.transportadora||'Interrapidísimo':'Interrapidísimo';
+  abrirModal('modal-editar-pedido');
+}
+
+function guardarEdicionPedido(){
+  if(!isAdmin()){ toast('Solo el administrador puede editar pedidos'); return; }
+  const ped=getPedidos().find(p=>p.id===_edicionPedidoId);
+  if(!ped) return;
+  const val=id=>document.getElementById(id).value.trim();
+  const nombre=val('ep-nombre');
+  const tel=val('ep-tel');
+  if(!nombre || !tel){ toast('Nombre y teléfono son obligatorios'); return; }
+  // Recopilar ítems
+  const wrap=document.getElementById('ep-items-wrap');
+  const inputs=wrap.querySelectorAll('input[data-ep-it]');
+  const itemsMap={};
+  inputs.forEach(inp=>{
+    const i=+inp.dataset.epIt, f=inp.dataset.epF;
+    if(!itemsMap[i]) itemsMap[i]={};
+    itemsMap[i][f]= (f==='cantidad'||f==='precioVenta') ? (parseFloat(inp.value)||0) : inp.value.trim();
+  });
+  const items=Object.keys(itemsMap).sort((a,b)=>+a-+b).map(k=>{
+    const base=(Array.isArray(ped.items)&&ped.items[+k])||{};
+    return {...base, ...itemsMap[k]};
+  });
+  const cliente={
+    ...(ped.cliente||{}),
+    nombre, telefono:tel,
+    cedula:val('ep-cedula'),
+    direccion:val('ep-dir'),
+    barrio:val('ep-barrio'),
+    referencia:val('ep-referencia'),
+    empresa:val('ep-empresa'),
+    ciudad:val('ep-ciudad'),
+    departamento:val('ep-dpto'),
+    localidad:val('ep-localidad'),
+    destinoTipo:document.getElementById('ep-destino-tipo').value,
+    notas:val('ep-notas')
+  };
+  const precioTotal=parseFloat(document.getElementById('ep-precio').value)||0;
+  const pedAct={
+    ...ped,
+    cliente,
+    items,
+    productoNombre: items.length===1 ? items[0].productoNombre : items.map(i=>i.productoNombre).join(' + '),
+    talla: items[0]?.talla || ped.talla,
+    color: items[0]?.color || ped.color,
+    cantidadPares: items.reduce((s,i)=>s+(parseInt(i.cantidad)||0),0),
+    precioVenta: precioTotal || items.reduce((s,i)=>s+(i.precioVenta*i.cantidad),0),
+    formaPago: document.getElementById('ep-forma-pago').value,
+    vendedorNombre: val('ep-vendedor') || ped.vendedorNombre,
+    tsEdicion: Date.now()
+  };
+  writePedido(pedAct);
+
+  // Guía: crear / actualizar / eliminar según número
+  const guiaActual=getGuias().find(g=>g.pedidoId===ped.id);
+  const numGuia=val('ep-guia-num');
+  const transp=val('ep-guia-trans')||'Interrapidísimo';
+  if(numGuia){
+    if(guiaActual){
+      writeGuia({...guiaActual, numero:numGuia, transportadora:transp});
+    } else {
+      const nuevaGuia={
+        id:uid(), pedidoId:ped.id, numero:numGuia, transportadora:transp,
+        ciudadDestino: cliente.ciudad, clienteNombre: cliente.nombre, clienteTelefono: cliente.telefono,
+        notas:'Editada manualmente', estadoActual:'registrada', historial:[], ultimoRastreo:null,
+        fecha: hoy(), ts: Date.now()
+      };
+      writeGuia(nuevaGuia);
+      writePedido({...pedAct, guiaId:nuevaGuia.id, estado: pedAct.estado==='pendiente'?'enviado':pedAct.estado, tsEstado:Date.now()});
+    }
+  } else if(guiaActual){
+    // Si el usuario vació el número, eliminamos la guía asociada.
+    if(USE_FIREBASE) REF.guias.child(guiaActual.id).remove();
+    localGuias=localGuias.filter(g=>g.id!==guiaActual.id);
+    writePedido({...pedAct, guiaId:null});
+  }
+  toast('Pedido actualizado');
+  cerrarModal('modal-editar-pedido');
 }
 
 // Aprobación rápida (vendedor crea → admin aprueba)
@@ -4838,6 +5097,7 @@ function toggleCiudadBloqueo(ciudad,dpto,bloqActual){
 
 let _publiSnap=null;
 let _publiRango='hoy';
+let _publiFecha=''; // YYYY-MM-DD; cuando no está vacío sobrescribe el rango
 const KPI_UMBRALES={
   ctrAlerta:0.8,   // <0.8% creativo no engancha
   cpmMax:15000,    // CPM>15k es caro
@@ -4847,11 +5107,35 @@ const KPI_UMBRALES={
 
 function setPubliRango(r){
   _publiRango=r;
+  _publiFecha=''; // al cambiar de tab se limpia la fecha puntual
+  const fi=document.getElementById('publi-filtro-fecha'); if(fi) fi.value='';
   ['hoy','semana','mes'].forEach(k=>{
     const b=document.getElementById('publi-tab-'+k);
     if(b) b.classList.toggle('active',k===r);
   });
   renderPublicidadCuerpo();
+}
+
+function setPubliFecha(f){
+  _publiFecha=f||'';
+  const fi=document.getElementById('publi-filtro-fecha');
+  if(fi && fi.value!==_publiFecha) fi.value=_publiFecha;
+  // Al elegir una fecha puntual, desactivamos visualmente los tabs.
+  ['hoy','semana','mes'].forEach(k=>{
+    const b=document.getElementById('publi-tab-'+k);
+    if(b) b.classList.toggle('active', !_publiFecha && k===_publiRango);
+  });
+  renderPublicidadCuerpo();
+}
+
+function getPubliDataActiva(){
+  // Devuelve { data, label } combinando rango y fecha puntual.
+  if(_publiFecha){
+    const hist=_publiSnap?.historico||_publiSnap?.diario||{};
+    const d=hist[_publiFecha];
+    return { data: d||null, label: 'Día '+_publiFecha };
+  }
+  return { data: _publiSnap?.rangos?.[_publiRango]||null, label: _publiRango };
 }
 
 function renderPublicidad(){
@@ -4871,10 +5155,12 @@ function renderPublicidad(){
 function renderPublicidadCuerpo(){
   const empty=document.getElementById('publi-empty');
   const sync=document.getElementById('publi-last-sync');
-  const data=_publiSnap?.rangos?.[_publiRango];
+  const {data, label}=getPubliDataActiva();
   if(!_publiSnap || !data){
     if(empty) empty.style.display='block';
-    if(sync)  sync.textContent='Esperando datos de n8n…';
+    if(sync)  sync.textContent=_publiFecha
+      ? `Sin datos para ${_publiFecha} (n8n debe escribir en historico/${_publiFecha})`
+      : 'Esperando datos de n8n…';
     // Vaciar tarjetas
     ['publi-s-gasto','publi-s-msg','publi-s-util','publi-s-roas'].forEach(id=>{
       const el=document.getElementById(id); if(el) el.textContent='—';
@@ -4883,6 +5169,7 @@ function renderPublicidadCuerpo(){
       const el=document.getElementById(id); if(el) el.textContent='—';
     });
     const vt=document.getElementById('publi-vendedores'); if(vt) vt.innerHTML='';
+    const mv=document.getElementById('publi-modelos-vendedor'); if(mv) mv.innerHTML='';
     const mt=document.getElementById('publi-modelos'); if(mt) mt.innerHTML='';
     const aw=document.getElementById('publi-alertas-wrap'); if(aw){aw.style.display='none';aw.innerHTML='';}
     return;
@@ -4915,6 +5202,7 @@ function renderPublicidadCuerpo(){
   document.getElementById('publi-s-roas-sub').textContent='En ruta: '+(roasRuta?roasRuta.toFixed(2)+'x':'—');
 
   renderPubliVendedores(data.vendedores||[]);
+  renderPubliModelosPorVendedor(data);
   renderPubliModelos(data.modelos||[]);
   renderPubliAlertas(data.vendedores||[]);
 }
@@ -4978,10 +5266,37 @@ function renderPubliVendedores(rows){
   el.innerHTML=html;
 }
 
+// Normaliza el nombre de un modelo: quita color y sufijos comunes para que
+// "Bota Classic Negro" y "Bota Classic Café" caigan en el mismo grupo.
+function publiNormalizaModelo(nombre){
+  if(!nombre) return '—';
+  // Coloca el separador conocido (" - color", " / color", " — color") y devuelve
+  // solo la parte previa. Si no hay separador, quita palabras-color al final.
+  let s=String(nombre).trim();
+  s=s.replace(/\s*[-–—\/|·]\s*[^-–—\/|·]+$/,''); // quita " - Café", " / Marrón", etc.
+  const colores=['negro','negra','blanco','blanca','café','cafe','marrón','marron','azul','rojo','roja','verde','gris','beige','camel','tan','amarillo','dorado','plateado','rosa','fucsia','violeta','morado','vino','cuero','miel','arena','cobre','ocre','crema','natural','chocolate','habano','tabaco','nogal'];
+  const re=new RegExp('\\s+('+colores.join('|')+')$','i');
+  s=s.replace(re,'');
+  return s.trim()||nombre.trim();
+}
+
 function renderPubliModelos(rows){
   const el=document.getElementById('publi-modelos');
   if(!rows.length){ el.innerHTML='<div class="empty"><h3>Sin datos por modelo</h3><p style="font-size:11px;color:var(--muted);margin-top:4px">n8n calcula esto agrupando conjuntos de anuncios por el diccionario de modelos.</p></div>'; return; }
-  rows=[...rows].sort((a,b)=>{
+  // Agrupamos por modelo normalizado (sin color)
+  const grupos={};
+  rows.forEach(r=>{
+    const k=publiNormalizaModelo(r.modelo);
+    if(!grupos[k]) grupos[k]={modelo:k, gasto:0, mensajes:0, paresVendidos:0, ventaEntregada:0, ventaEnRuta:0, costoEntregado:0, costoEnRuta:0};
+    grupos[k].gasto += r.gasto||0;
+    grupos[k].mensajes += r.mensajes||0;
+    grupos[k].paresVendidos += r.paresVendidos||0;
+    grupos[k].ventaEntregada += r.ventaEntregada||0;
+    grupos[k].ventaEnRuta += r.ventaEnRuta||0;
+    grupos[k].costoEntregado += r.costoEntregado||0;
+    grupos[k].costoEnRuta += r.costoEnRuta||0;
+  });
+  let rowsAgg=Object.values(grupos).sort((a,b)=>{
     const ua=(a.ventaEntregada||0)-(a.costoEntregado||0)-(a.gasto||0);
     const ub=(b.ventaEntregada||0)-(b.costoEntregado||0)-(b.gasto||0);
     return ub-ua;
@@ -4990,7 +5305,7 @@ function renderPubliModelos(rows){
     <th>Modelo</th><th>Gasto</th><th>Mensajes</th><th>Pares</th>
     <th>Venta entreg.</th><th>Venta en ruta</th><th>Utilidad</th><th>ROAS entreg.</th>
   </tr></thead><tbody>`;
-  rows.forEach(r=>{
+  rowsAgg.forEach(r=>{
     const gasto=r.gasto||0;
     const ventaEnt=r.ventaEntregada||0, ventaRuta=r.ventaEnRuta||0;
     const costoEnt=r.costoEntregado||0;
@@ -5007,6 +5322,74 @@ function renderPubliModelos(rows){
       <td><strong class="${roas>=2?'text-success':roas>=1?'text-warning':'text-danger'}">${roas?roas.toFixed(2)+'x':'—'}</strong></td>
     </tr>`;
   });
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+// Tabla "modelos publicados por vendedor — activos". Lee los items de:
+//   1) data.vendedorModelos[]  → {vendedor, modelo, presupuestoDiario, gastoHoy, estado}
+//   2) Si no existe, intenta data.vendedores[].modelosActivos[]  → {modelo, presupuestoDiario, gastoHoy, estado}
+// Solo cuenta filas con estado ACTIVE (las pausadas/ancladas se excluyen).
+function renderPubliModelosPorVendedor(data){
+  const el=document.getElementById('publi-modelos-vendedor');
+  if(!el) return;
+  let filas=[];
+  if(Array.isArray(data.vendedorModelos)){
+    filas=data.vendedorModelos.slice();
+  } else if(Array.isArray(data.vendedores)){
+    data.vendedores.forEach(v=>{
+      if(Array.isArray(v.modelosActivos)){
+        v.modelosActivos.forEach(m=>{
+          filas.push({
+            vendedor: v.nombre, modelo: m.modelo,
+            presupuestoDiario: m.presupuestoDiario, gastoHoy: m.gastoHoy,
+            estado: m.estado || v.estado
+          });
+        });
+      }
+    });
+  }
+  // Solo activos
+  filas=filas.filter(f=>String(f.estado||'').toUpperCase()==='ACTIVE');
+  if(!filas.length){
+    el.innerHTML=`<div class="empty"><h3>Sin anuncios activos</h3><p style="font-size:11px;color:var(--muted);margin-top:4px">n8n debe escribir <code>vendedorModelos[]</code> o <code>vendedores[].modelosActivos[]</code> con sólo las publicidades en estado ACTIVE.</p></div>`;
+    return;
+  }
+  // Agrupar por modelo normalizado, con sub-filas por vendedor
+  const grupos={};
+  filas.forEach(f=>{
+    const k=publiNormalizaModelo(f.modelo);
+    if(!grupos[k]) grupos[k]={modelo:k, presupTotal:0, gastoTotal:0, vendedores:[]};
+    grupos[k].presupTotal += f.presupuestoDiario||0;
+    grupos[k].gastoTotal  += f.gastoHoy||0;
+    grupos[k].vendedores.push({nombre:f.vendedor||'—', presup:f.presupuestoDiario||0, gasto:f.gastoHoy||0});
+  });
+  const ordenados=Object.values(grupos).sort((a,b)=>(b.presupTotal||0)-(a.presupTotal||0));
+  let html=`<table><thead><tr>
+    <th>Modelo</th><th>Vendedores activos</th><th># Vendedores</th>
+    <th>Presup. activo (día)</th><th>Gastado hoy</th>
+  </tr></thead><tbody>`;
+  ordenados.forEach(g=>{
+    const vendList=g.vendedores
+      .sort((a,b)=>b.presup-a.presup)
+      .map(v=>`<div style="font-size:12px;line-height:1.4"><strong>${v.nombre}</strong> · <span style="color:var(--muted)">${fmtM(v.presup)}/día · gastó ${fmtM(v.gasto)}</span></div>`)
+      .join('');
+    html+=`<tr>
+      <td><strong>${g.modelo}</strong></td>
+      <td>${vendList}</td>
+      <td>${fmtN(g.vendedores.length)}</td>
+      <td style="white-space:nowrap"><strong>${fmtM(g.presupTotal)}</strong></td>
+      <td style="white-space:nowrap;color:var(--muted)">${fmtM(g.gastoTotal)}</td>
+    </tr>`;
+  });
+  // Fila de total
+  const totPresup=ordenados.reduce((s,g)=>s+g.presupTotal,0);
+  const totGasto=ordenados.reduce((s,g)=>s+g.gastoTotal,0);
+  html+=`<tr style="background:#f8fafc;font-weight:700">
+    <td colspan="3" style="text-align:right">Total activo</td>
+    <td style="white-space:nowrap">${fmtM(totPresup)}</td>
+    <td style="white-space:nowrap;color:var(--muted)">${fmtM(totGasto)}</td>
+  </tr>`;
   html+='</tbody></table>';
   el.innerHTML=html;
 }
