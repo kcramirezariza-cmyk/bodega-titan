@@ -918,7 +918,7 @@ textarea{resize:vertical}
             <input type="date" id="publi-filtro-fecha" onchange="setPubliFecha(this.value)" style="border:none;background:transparent;font-size:13px;padding:3px 4px;width:140px">
             <button class="btn-icon" onclick="setPubliFecha('')" title="Quitar fecha" style="padding:2px 4px"><i class="bi bi-x-lg" style="font-size:11px"></i></button>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="renderPublicidad()" title="Refrescar"><i class="bi bi-arrow-clockwise"></i></button>
+          <button class="btn btn-outline btn-sm" onclick="dispararFlujoPublicidad()" title="Refrescar y ejecutar flujo de n8n"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
         </div>
       </div>
 
@@ -4849,21 +4849,35 @@ function getCatIcon(cat=''){
 }
 function abrirPickerProducto(){
   const catSel=document.getElementById('picker-cat');
-  const cats=[...new Set(getProds().map(p=>p.categoria||'Sin categoría').filter(Boolean))].sort();
+  const soloAccesorios = tipoVenta==='combo'||tipoVenta==='trio';
+  let cats=[...new Set(getProds().map(p=>p.categoria||'Sin categoría').filter(Boolean))].sort();
+  if(soloAccesorios) cats=cats.filter(c=>esCategoriaComboPermitida(c));
   const catActual=catSel?.value||'';
   if(catSel){ catSel.innerHTML='<option value="">Todas las categorías</option>'+cats.map(c=>`<option value="${c}"${c===catActual?' selected':''}>${c}</option>`).join(''); }
   const si=document.getElementById('picker-search'); if(si) si.value='';
   renderPickerProductos();
   abrirModal('modal-picker-producto');
 }
+// En combo/trío solo se permiten accesorios tipo billetera o bolso (no calzado).
+function esCategoriaComboPermitida(categoria){
+  const c=(categoria||'').toLowerCase();
+  return /billetera|bolso|cartera|monedero/.test(c);
+}
 function renderPickerProductos(){
   const q=(document.getElementById('picker-search')?.value||'').toLowerCase();
   const cat=document.getElementById('picker-cat')?.value||'';
   let prods=getProds();
+  const soloAccesorios = tipoVenta==='combo'||tipoVenta==='trio';
+  if(soloAccesorios) prods=prods.filter(p=>esCategoriaComboPermitida(p.categoria));
   if(q) prods=prods.filter(p=>p.nombre.toLowerCase().includes(q)||(p.categoria||'').toLowerCase().includes(q));
   if(cat) prods=prods.filter(p=>(p.categoria||'Sin categoría')===cat);
   const grid=document.getElementById('picker-grid'); if(!grid) return;
-  if(!prods.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon"><i class="bi bi-search"></i></div><h3>Sin resultados</h3></div>';return;}
+  if(!prods.length){
+    grid.innerHTML=soloAccesorios
+      ? `<div class="empty" style="grid-column:1/-1"><div class="empty-icon"><i class="bi bi-bag-x"></i></div><h3>Sin billeteras ni bolsos disponibles</h3><p style="font-size:12px;color:var(--muted);margin-top:4px">El combo/trío solo admite productos cuya categoría sea billetera o bolso. El calzado no se puede combinar.</p></div>`
+      : '<div class="empty" style="grid-column:1/-1"><div class="empty-icon"><i class="bi bi-search"></i></div><h3>Sin resultados</h3></div>';
+    return;
+  }
   grid.innerHTML=prods.map((p,i)=>{
     const stock=p.variantes.reduce((s,v)=>s+(v.stockActual||0),0);
     const sinStock=stock===0;
@@ -5096,8 +5110,12 @@ function toggleCiudadBloqueo(ciudad,dpto,bloqActual){
 // Mientras n8n no escriba, mostramos el estado vacío con instrucción clara.
 
 let _publiSnap=null;
+let _publiHistorico=null; // { 'YYYY-MM-DD': {gastoTotal, vendedores, modelos, ...} }
 let _publiRango='hoy';
 let _publiFecha=''; // YYYY-MM-DD; cuando no está vacío sobrescribe el rango
+// URL del webhook de n8n que re-ejecuta el flujo de publicidad (Flujo A).
+// Producción: https://titan331.app.n8n.cloud/webhook/titan-publicidad-refresh
+const N8N_WEBHOOK_PUBLICIDAD='https://titan331.app.n8n.cloud/webhook/titan-publicidad-refresh';
 const KPI_UMBRALES={
   ctrAlerta:0.8,   // <0.8% creativo no engancha
   cpmMax:15000,    // CPM>15k es caro
@@ -5130,8 +5148,10 @@ function setPubliFecha(f){
 
 function getPubliDataActiva(){
   // Devuelve { data, label } combinando rango y fecha puntual.
+  // La fecha puntual lee del histórico (titanbotas/publicidad/historico/FECHA),
+  // que n8n acumula un registro por día.
   if(_publiFecha){
-    const hist=_publiSnap?.historico||_publiSnap?.diario||{};
+    const hist=_publiHistorico||_publiSnap?.historico||{};
     const d=hist[_publiFecha];
     return { data: d||null, label: 'Día '+_publiFecha };
   }
@@ -5139,17 +5159,44 @@ function getPubliDataActiva(){
 }
 
 function renderPublicidad(){
-  // Si Firebase está activo, nos suscribimos una sola vez al snapshot.
+  // Si Firebase está activo, nos suscribimos una sola vez al snapshot y al histórico.
   if(USE_FIREBASE && !window._publiSubscribed){
     try{
       db.ref('titanbotas/publicidad/snapshot').on('value', snap=>{
         _publiSnap=snap.val()||null;
         if(currentPage==='publicidad') renderPublicidadCuerpo();
       });
+      db.ref('titanbotas/publicidad/historico').on('value', snap=>{
+        _publiHistorico=snap.val()||null;
+        if(currentPage==='publicidad') renderPublicidadCuerpo();
+      });
       window._publiSubscribed=true;
-    }catch(e){console.warn('No se pudo suscribir a publicidad/snapshot',e);}
+    }catch(e){console.warn('No se pudo suscribir a publicidad',e);}
   }
   renderPublicidadCuerpo();
+}
+
+// Dispara el flujo de n8n (Flujo A) que vuelve a leer Meta + Firebase y reescribe
+// el snapshot/histórico. El botón refrescar de la sección lo invoca.
+let _publiRefreshEnCurso=false;
+function dispararFlujoPublicidad(){
+  // Siempre re-render local primero (datos vigentes de Firebase).
+  renderPublicidadCuerpo();
+  if(!N8N_WEBHOOK_PUBLICIDAD){ toast('Configura N8N_WEBHOOK_PUBLICIDAD para disparar el flujo'); return; }
+  if(_publiRefreshEnCurso) return;
+  _publiRefreshEnCurso=true;
+  const sync=document.getElementById('publi-last-sync');
+  if(sync) sync.textContent='Ejecutando flujo de n8n… (Meta + Firebase)';
+  const url=N8N_WEBHOOK_PUBLICIDAD+(_publiFecha?('?fecha='+encodeURIComponent(_publiFecha)):'');
+  fetch(url,{method:'GET',mode:'cors'})
+    .then(r=>{
+      toast(r.ok?'Flujo de n8n disparado — los datos se actualizarán en unos segundos':'n8n respondió con error '+r.status);
+    })
+    .catch(e=>{
+      console.warn('Webhook n8n',e);
+      toast('No se pudo contactar n8n. Verifica que el flujo esté activo y el webhook publicado.');
+    })
+    .finally(()=>{ _publiRefreshEnCurso=false; });
 }
 
 function renderPublicidadCuerpo(){
