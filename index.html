@@ -120,9 +120,10 @@ td{padding:11px 13px;vertical-align:middle}
 .badge-entregado{background:#d1fae5;color:#065f46}
 .badge-novedad{background:#fef3c7;color:#92400e}
 .badge-cancelado{background:#f1f5f9;color:#475569}
-.badge-devolucion{background:#fee2e2;color:#9f1239}
 .badge-pendiente{background:#fde68a;color:#78350f}
 .badge-aprobado{background:#d1fae5;color:#065f46}
+.badge-en-oficina{background:#cffafe;color:#155e75}
+.badge-en-devolucion{background:#ffedd5;color:#9a3412}
 .order-step{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--border)}
 .order-step:last-child{border-bottom:none}
 .step-num{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -143,6 +144,7 @@ td{padding:11px 13px;vertical-align:middle}
 .btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#dc2626}
 .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{background:var(--bg)}
 .btn-sm{padding:5px 10px;font-size:12px}
+.tventa-btn.active,.par-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
 .btn-icon{background:none;border:none;cursor:pointer;padding:5px;border-radius:6px;color:var(--muted);transition:all .15s;font-size:14px}.btn-icon:hover{background:var(--bg);color:var(--text)}
 
 /* ── FORMS ── */
@@ -355,6 +357,7 @@ textarea{resize:vertical}
     <div class="nav-item" onclick="navigate('salida')" data-admin><span class="nav-icon"><i class="bi bi-arrow-up-circle-fill"></i></span>Salida de Stock</div>
     <div class="nav-item" onclick="navigate('importar')" data-admin><span class="nav-icon"><i class="bi bi-upload"></i></span>Importar Excel</div>
     <div class="nav-label" data-admin>Análisis</div>
+    <div class="nav-item" onclick="navigate('publicidad')" data-admin><span class="nav-icon"><i class="bi bi-megaphone-fill"></i></span>Publicidad<span class="nav-badge" id="badge-publi">0</span></div>
     <div class="nav-item" onclick="navigate('historial')" data-admin><span class="nav-icon"><i class="bi bi-clock-history"></i></span>Historial</div>
     <div class="nav-item" onclick="navigate('reportes')" data-admin><span class="nav-icon"><i class="bi bi-bar-chart-fill"></i></span>Reportes</div>
     <div class="nav-item" onclick="navigate('alertas')" data-admin>
@@ -633,6 +636,15 @@ textarea{resize:vertical}
             <div class="step-num" id="snum1">1</div>
             <div style="flex:1">
               <div style="font-weight:600;margin-bottom:12px">Producto, talla y cantidad</div>
+              <div class="form-group" id="tipo-venta-g">
+                <label>Tipo de venta</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap" id="tipo-venta-btns">
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn active" onclick="setTipoVenta('individual',this)">Individual</button>
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('combo',this)">Combo (2)</button>
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('trio',this)">Trío (3)</button>
+                </div>
+                <div id="tipo-venta-hint" style="font-size:11px;color:var(--muted);margin-top:6px;display:none"></div>
+              </div>
               <div class="form-group">
                 <label>Producto (modelo)</label>
                 <div id="ped-prod-display" onclick="abrirPickerProducto()"
@@ -672,8 +684,14 @@ textarea{resize:vertical}
           <div style="font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
             <i class="bi bi-cart3" style="color:var(--primary);font-size:18px"></i>
             Carrito — <span id="carrito-count">0</span> producto(s)
+            <span id="carrito-combo-badge" class="badge badge-purple" style="display:none;margin-left:auto"></span>
           </div>
           <div id="carrito-list"></div>
+          <div id="combo-precio-g" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">Precio del <span id="combo-precio-tipo">combo</span> (total) *</label>
+            <input type="number" id="combo-precio" placeholder="Ej: 320000" min="0" oninput="onComboPrecioInput()">
+            <div class="addr-status" id="combo-precio-status"></div>
+          </div>
         </div>
         <!-- Paso 2: Cliente y envío -->
         <div class="card mb-16" id="pedido-step2" style="opacity:.5;pointer-events:none">
@@ -813,9 +831,11 @@ textarea{resize:vertical}
             <option value="">Todos los estados</option>
             <option value="pendiente">Pendiente</option>
             <option value="aprobado">Aprobado</option>
-            <option value="enviado">Enviado</option>
+            <option value="enviado">En tránsito</option>
+            <option value="en_oficina">En oficina</option>
             <option value="entregado">Entregado</option>
             <option value="novedad">Novedad</option>
+            <option value="en_devolucion">En devolución</option>
             <option value="cancelado">Cancelado</option>
           </select>
         </div>
@@ -832,9 +852,11 @@ textarea{resize:vertical}
             <option value="">Todos los estados</option>
             <option value="pendiente">Pendiente</option>
             <option value="aprobado">Aprobado</option>
-            <option value="enviado">Enviado</option>
+            <option value="enviado">En tránsito</option>
+            <option value="en_oficina">En oficina</option>
             <option value="entregado">Entregado</option>
             <option value="novedad">Novedad</option>
+            <option value="en_devolucion">En devolución</option>
             <option value="cancelado">Cancelado</option>
           </select>
           <select id="filter-admin-vendedor" onchange="renderAdminPedidos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
@@ -876,6 +898,76 @@ textarea{resize:vertical}
         </div>
       </div>
       <div id="guias-content"></div>
+    </div>
+
+    <!-- PUBLICIDAD (admin) -->
+    <div class="page" id="page-publicidad">
+      <div class="section-header">
+        <div>
+          <div class="section-title"><i class="bi bi-megaphone-fill" style="color:var(--primary)"></i> Publicidad — RR GROUP</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px" id="publi-last-sync">Esperando datos de n8n…</div>
+        </div>
+        <div class="flex gap-8" style="flex-wrap:wrap;align-items:center">
+          <div class="period-tabs" style="margin:0">
+            <button class="period-tab active" id="publi-tab-hoy"    onclick="setPubliRango('hoy')">Hoy</button>
+            <button class="period-tab"        id="publi-tab-semana" onclick="setPubliRango('semana')">Semana</button>
+            <button class="period-tab"        id="publi-tab-mes"    onclick="setPubliRango('mes')">Mes</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:4px 8px" title="Filtrar por día específico">
+            <i class="bi bi-calendar-event" style="color:var(--primary)"></i>
+            <input type="date" id="publi-filtro-fecha" onchange="setPubliFecha(this.value)" style="border:none;background:transparent;font-size:13px;padding:3px 4px;width:140px">
+            <button class="btn-icon" onclick="setPubliFecha('')" title="Quitar fecha" style="padding:2px 4px"><i class="bi bi-x-lg" style="font-size:11px"></i></button>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="dispararFlujoPublicidad()" title="Refrescar y ejecutar flujo de n8n"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
+        </div>
+      </div>
+
+      <!-- Tarjetas resumen -->
+      <div class="stats-row stats-4 mb-16">
+        <div class="stat-card"><div class="stat-icon" style="background:#ede9fe;color:#6366f1"><i class="bi bi-cash-coin"></i></div><div class="stat-label">Gasto</div><div class="stat-value" id="publi-s-gasto">—</div><div class="stat-sub" id="publi-s-gasto-sub">en el período</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#dbeafe;color:#3b82f6"><i class="bi bi-chat-dots-fill"></i></div><div class="stat-label">Mensajes</div><div class="stat-value" id="publi-s-msg">—</div><div class="stat-sub" id="publi-s-msg-sub">$/conversación: —</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#dcfce7;color:#10b981"><i class="bi bi-graph-up"></i></div><div class="stat-label">Utilidad (entregado)</div><div class="stat-value" id="publi-s-util">—</div><div class="stat-sub" id="publi-s-util-sub">en ruta: —</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#fee2e2;color:#ef4444"><i class="bi bi-speedometer2"></i></div><div class="stat-label">ROAS entregado</div><div class="stat-value" id="publi-s-roas">—</div><div class="stat-sub" id="publi-s-roas-sub">en ruta: —</div></div>
+      </div>
+
+      <!-- Alertas (presupuesto / KPIs en rojo) -->
+      <div id="publi-alertas-wrap" style="display:none" class="mb-16"></div>
+
+      <!-- Tabla por vendedor -->
+      <div class="card mb-16">
+        <div class="flex-between mb-12">
+          <div><div class="card-title">Por vendedor (= campaña)</div><div class="card-sub">Cruce con pedidos de la app</div></div>
+        </div>
+        <div id="publi-vendedores" class="table-wrap"></div>
+      </div>
+
+      <!-- Tabla: modelos activos por vendedor -->
+      <div class="card mb-16">
+        <div class="flex-between mb-12">
+          <div>
+            <div class="card-title">Modelos publicados por vendedor — activos</div>
+            <div class="card-sub">Solo campañas/anuncios ACTIVOS. Las publicidades ancladas (desactivadas) no se cuentan.</div>
+          </div>
+        </div>
+        <div id="publi-modelos-vendedor" class="table-wrap"></div>
+      </div>
+
+      <!-- Tabla por modelo -->
+      <div class="card mb-20">
+        <div class="flex-between mb-12">
+          <div><div class="card-title">Por modelo (= conjunto de anuncios)</div><div class="card-sub">Utilidad real cruzada con ventas — todos los colores integrados en un modelo</div></div>
+        </div>
+        <div id="publi-modelos" class="table-wrap"></div>
+      </div>
+
+      <!-- Estado vacío / esperando n8n -->
+      <div class="card" id="publi-empty" style="display:none">
+        <div class="empty">
+          <div class="empty-icon"><i class="bi bi-cloud-arrow-down" style="font-size:38px;color:var(--muted)"></i></div>
+          <h3>Esperando datos de n8n</h3>
+          <p style="font-size:12px;color:var(--muted);margin-top:6px;max-width:480px;margin-left:auto;margin-right:auto">El panel se llena cuando n8n escriba en <code>titanbotas/publicidad/snapshot</code>. Hasta entonces, esta sección es solo el visor.</p>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -1067,15 +1159,23 @@ textarea{resize:vertical}
       <button class="btn-icon" onclick="cerrarModal('modal-estado-pedido')">✕</button>
     </div>
     <div class="form-group"><label>Nuevo estado</label>
-      <select id="nuevo-estado-ped">
+      <select id="nuevo-estado-ped" onchange="onCambioEstadoSel()">
         <option value="pendiente">Pendiente</option>
         <option value="aprobado">Aprobado</option>
-        <option value="enviado">Enviado</option>
+        <option value="enviado">En tránsito</option>
+        <option value="en_oficina">En oficina</option>
         <option value="entregado">Entregado</option>
         <option value="novedad">Novedad</option>
-        <option value="devolucion">Devolución</option>
+        <option value="en_devolucion">En devolución</option>
         <option value="cancelado">Cancelado</option>
       </select>
+    </div>
+    <div class="form-group" id="devolucion-ingreso-g" style="display:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;margin:0">
+        <input type="checkbox" id="devolucion-ingreso-chk" style="width:auto;margin:0">
+        <span><i class="bi bi-box-arrow-in-down" style="color:#9a3412"></i> El producto ya ingresó a nuestra oficina (devolver al inventario)</span>
+      </label>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Marca esta casilla solo cuando la devolución haya llegado físicamente a tu ciudad. El stock se restituirá al inventario.</div>
     </div>
     <div class="form-group"><label>Nota interna (opcional)</label>
       <input type="text" id="nota-estado-ped" placeholder="Ej: Dirección incorrecta, cliente no contesta...">
@@ -1083,6 +1183,67 @@ textarea{resize:vertical}
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="cerrarModal('modal-estado-pedido')">Cancelar</button>
       <button class="btn btn-primary" onclick="confirmarCambioEstado()">Actualizar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR PEDIDO (admin) -->
+<div class="modal-overlay" id="modal-editar-pedido">
+  <div class="modal modal-lg" style="max-width:780px">
+    <div class="modal-header">
+      <div><div class="modal-title"><i class="bi bi-pencil-square"></i> Editar pedido</div><div class="modal-sub" id="ep-sub">Modifica los datos del pedido y de la guía</div></div>
+      <button class="btn-icon" onclick="cerrarModal('modal-editar-pedido')">✕</button>
+    </div>
+    <div style="padding:0">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:4px 0 8px"><i class="bi bi-person-vcard-fill"></i> Cliente y envío</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group"><label>Nombre *</label><input type="text" id="ep-nombre"></div>
+        <div class="form-group"><label>Teléfono *</label><input type="tel" id="ep-tel" maxlength="15"></div>
+        <div class="form-group"><label>Cédula</label><input type="text" id="ep-cedula" maxlength="15"></div>
+        <div class="form-group"><label>Forma de pago</label>
+          <select id="ep-forma-pago">
+            <option value="contraentrega">Contraentrega</option>
+            <option value="adelantado">Pago adelantado</option>
+            <option value="addi">Addi</option>
+            <option value="sistecredito">Sistecredito</option>
+            <option value="garantia">Garantía</option>
+            <option value="cambio">Cambio</option>
+            <option value="promocion">Promoción</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Dirección</label><input type="text" id="ep-dir"></div>
+        <div class="form-group"><label>Barrio</label><input type="text" id="ep-barrio"></div>
+        <div class="form-group"><label>Referencia</label><input type="text" id="ep-referencia"></div>
+        <div class="form-group"><label>Empresa / Oficina destino</label><input type="text" id="ep-empresa"></div>
+        <div class="form-group"><label>Ciudad</label><input type="text" id="ep-ciudad"></div>
+        <div class="form-group"><label>Departamento</label><input type="text" id="ep-dpto"></div>
+        <div class="form-group"><label>Localidad (Bogotá)</label><input type="text" id="ep-localidad"></div>
+        <div class="form-group"><label>Destino</label>
+          <select id="ep-destino-tipo">
+            <option value="domicilio">Domicilio</option>
+            <option value="oficina">Oficina</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label>Notas del cliente</label><textarea id="ep-notas" rows="2"></textarea></div>
+
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 8px"><i class="bi bi-box-seam-fill"></i> Productos</div>
+      <div id="ep-items-wrap"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+        <div class="form-group"><label>Precio total venta</label><input type="number" id="ep-precio" min="0" step="any"></div>
+        <div class="form-group"><label>Vendedor</label><input type="text" id="ep-vendedor"></div>
+      </div>
+
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 8px"><i class="bi bi-truck"></i> Guía de envío</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group"><label>Número de guía</label><input type="text" id="ep-guia-num" placeholder="Ej: 123456789012"></div>
+        <div class="form-group"><label>Transportadora</label><input type="text" id="ep-guia-trans" placeholder="Interrapidísimo"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:-4px">Si dejas el número vacío, se elimina la guía del pedido.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="cerrarModal('modal-editar-pedido')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEdicionPedido()"><i class="bi bi-check-lg"></i> Guardar cambios</button>
     </div>
   </div>
 </div>
@@ -1543,11 +1704,11 @@ function showApp() {
 // ════════════════════════════════════════
 let currentPage='dashboard', dashChart=null, dashBodegaChart=null, reportPeriod=7, reportProdChart=null, reportDeptoChart=null;
 
-const PAGE_TITLES={dashboard:'Dashboard',productos:'Productos',entrada:'Entrada de Stock',salida:'Salida de Stock',importar:'Importar desde Excel',historial:'Historial',reportes:'Reportes',alertas:'Alertas',usuarios:'Usuarios','nuevo-pedido':'Nuevo Pedido','mis-pedidos':'Mis Pedidos','admin-pedidos':'Todos los Pedidos',guias:'Gestión de Guías'};
+const PAGE_TITLES={dashboard:'Dashboard',productos:'Productos',entrada:'Entrada de Stock',salida:'Salida de Stock',importar:'Importar desde Excel',historial:'Historial',reportes:'Reportes',alertas:'Alertas',usuarios:'Usuarios','nuevo-pedido':'Nuevo Pedido','mis-pedidos':'Mis Pedidos','admin-pedidos':'Todos los Pedidos',guias:'Gestión de Guías',publicidad:'Publicidad'};
 
 function navigate(page) {
   closeSidebar();
-  const adminPages=['productos','importar','historial','reportes','alertas','usuarios','admin-pedidos','guias','entrada','salida'];
+  const adminPages=['productos','importar','historial','reportes','alertas','usuarios','admin-pedidos','guias','entrada','salida','publicidad'];
   const vendorPages=['nuevo-pedido','mis-pedidos'];
   if (!isAdmin() && adminPages.includes(page)) return;
   if (!isAdmin() && !isVendedor() && vendorPages.includes(page)) return;
@@ -1569,6 +1730,7 @@ function navigate(page) {
   if(page==='mis-pedidos')     { const f=document.getElementById('filter-mis-pedidos'); if(f&&!f.value) f.value=''; renderMisPedidos(); }
   if(page==='admin-pedidos')   renderAdminPedidos();
   if(page==='guias')           renderGuias();
+  if(page==='publicidad')      renderPublicidad();
 }
 
 function refreshPage() {
@@ -1581,6 +1743,7 @@ function refreshPage() {
   else if (currentPage==='mis-pedidos')  renderMisPedidos();
   else if (currentPage==='admin-pedidos') renderAdminPedidos();
   else if (currentPage==='guias') { if(document.getElementById('guias-tabla')) renderGuiasTabla(); else renderGuias(); }
+  else if (currentPage==='publicidad') renderPublicidad();
   updateBadges();
 }
 
@@ -1649,25 +1812,38 @@ function renderDashboard() {
     const pedHoy=getPedidos().filter(p=>p.fecha===today);
     const pedHoyEl=document.getElementById('dash-pedidos-hoy');
     const pedHoySub=document.getElementById('dash-pedidos-hoy-sub');
-    if(pedHoySub) pedHoySub.textContent=`${pedHoy.length} pedido${pedHoy.length!==1?'s':''} hoy — por vendedor`;
+    const vendedoresActivos=localUsers.filter(u=>u.rol==='vendedor' && u.activo!==false);
+    const porVendedor={};
+    pedHoy.forEach(p=>{
+      const vn=p.vendedorNombre||'Desconocido';
+      if(!porVendedor[vn]) porVendedor[vn]={total:0,pendientes:0,aprobados:0,otros:0,alertas:0};
+      porVendedor[vn].total++;
+      if(p.estado==='pendiente') porVendedor[vn].pendientes++;
+      else if(p.estado==='aprobado') porVendedor[vn].aprobados++;
+      else porVendedor[vn].otros++;
+      if(p.precioBajo) porVendedor[vn].alertas++;
+    });
+    const normNombre=s=>String(s||'').toLowerCase().trim();
+    const subieronNorm=new Set(Object.keys(porVendedor).map(normNombre));
+    const sinPedidos=vendedoresActivos.filter(v=>{
+      const n=normNombre(v.nombre), u=normNombre(v.username);
+      return !subieronNorm.has(n) && !subieronNorm.has(u);
+    });
+    if(pedHoySub){
+      const subCount=Object.keys(porVendedor).length;
+      pedHoySub.textContent=`${pedHoy.length} pedido${pedHoy.length!==1?'s':''} hoy · ${subCount} vendedor${subCount===1?'':'es'} con pedidos · ${sinPedidos.length} sin subir`;
+    }
     if(pedHoyEl){
+      let html='';
       if(!pedHoy.length){
-        pedHoyEl.innerHTML=`<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px"><i class="bi bi-inbox"></i> Sin pedidos registrados hoy</div>`;
+        html+=`<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px"><i class="bi bi-inbox"></i> Sin pedidos registrados hoy</div>`;
       } else {
-        const porVendedor={};
-        pedHoy.forEach(p=>{
-          const vn=p.vendedorNombre||'Desconocido';
-          if(!porVendedor[vn]) porVendedor[vn]={total:0,pendientes:0,aprobados:0,otros:0,alertas:0};
-          porVendedor[vn].total++;
-          if(p.estado==='pendiente') porVendedor[vn].pendientes++;
-          else if(p.estado==='aprobado') porVendedor[vn].aprobados++;
-          else porVendedor[vn].otros++;
-          if(p.precioBajo) porVendedor[vn].alertas++;
-        });
-        pedHoyEl.innerHTML=Object.entries(porVendedor).map(([vn,d])=>`
+        html+=Object.entries(porVendedor)
+          .sort((a,b)=>b[1].total-a[1].total)
+          .map(([vn,d])=>`
           <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
             <div>
-              <div style="font-size:13px;font-weight:600">${vn}</div>
+              <div style="font-size:13px;font-weight:600"><i class="bi bi-check-circle-fill" style="color:var(--success);font-size:12px"></i> ${vn}</div>
               <div style="font-size:11px;color:var(--muted)">${d.total} pedido${d.total!==1?'s':''} · ${d.pendientes} pendiente${d.pendientes!==1?'s':''} · ${d.aprobados} aprobado${d.aprobados!==1?'s':''}</div>
             </div>
             <div style="display:flex;align-items:center;gap:6px">
@@ -1676,6 +1852,22 @@ function renderDashboard() {
             </div>
           </div>`).join('');
       }
+      // Vendedores que NO subieron pedidos hoy
+      if(sinPedidos.length){
+        html+=`<div style="margin-top:14px;padding:10px 12px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px">
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px">
+            <i class="bi bi-exclamation-triangle-fill"></i> Sin pedidos hoy (${sinPedidos.length})
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${sinPedidos.map(v=>`<span class="badge" style="background:#fff;color:#92400e;border:1px solid #fde68a;font-size:11px"><i class="bi bi-person-fill"></i> ${v.nombre}</span>`).join('')}
+          </div>
+        </div>`;
+      } else if(vendedoresActivos.length){
+        html+=`<div style="margin-top:14px;padding:10px 12px;background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;font-size:12px;color:#065f46;display:flex;align-items:center;gap:6px">
+          <i class="bi bi-check-circle-fill"></i> Todos los vendedores activos subieron pedidos hoy
+        </div>`;
+      }
+      pedHoyEl.innerHTML=html;
     }
     // Sección "Pedidos Recientes" — pendientes y novedades
     const dpEl=document.getElementById('dash-pedidos');
@@ -2588,6 +2780,45 @@ function selPares(n,btn){
 // ── Carrito de compras ─────────────────────
 let carrito=[];
 
+// ── Tipo de venta: individual / combo (2) / trío (3) ──────────────────
+// En combo/trío el precio se define UNA sola vez para todo el grupo (no por
+// ítem). Eso deja el dato limpio: revenue = comboPrecio, costo = suma de los
+// costos de cada componente. Sin trucos de $1 ni descuentos manuales.
+let tipoVenta='individual';
+let comboPrecio=0;
+const COMBO_N={individual:0,combo:2,trio:3};
+
+function setTipoVenta(t,btn){
+  tipoVenta=t; comboPrecio=0; carrito=[];
+  document.querySelectorAll('.tventa-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const cp=document.getElementById('combo-precio'); if(cp) cp.value='';
+  const cps=document.getElementById('combo-precio-status'); if(cps) cps.innerHTML='';
+  const hint=document.getElementById('tipo-venta-hint');
+  const precioG=document.getElementById('cart-precio')?.closest('.form-group');
+  if(t==='individual'){
+    if(hint){hint.style.display='none';}
+    if(precioG) precioG.style.display='block';
+  } else {
+    const n=COMBO_N[t];
+    if(hint){hint.style.display='block';hint.textContent=`Agrega los ${n} productos del ${t}. El precio se pone una sola vez abajo, en el carrito.`;}
+    if(precioG) precioG.style.display='none';
+  }
+  renderCarrito();
+}
+
+function onComboPrecioInput(){
+  comboPrecio=parseFloat(document.getElementById('combo-precio').value)||0;
+  const st=document.getElementById('combo-precio-status');
+  const refTotal=carrito.reduce((s,i)=>s+(i.precioRegistrado||0)*i.cantidad,0);
+  if(st){
+    if(!comboPrecio||!refTotal){st.innerHTML='';}
+    else if(comboPrecio<refTotal){st.innerHTML=`<span class="addr-warn" style="font-size:11px"><i class="bi bi-info-circle"></i> Suma por separado: ${fmtM(refTotal)}</span>`;}
+    else {st.innerHTML='';}
+  }
+  renderCarrito();
+}
+
 function agregarAlCarrito(){
   const pid=document.getElementById('ped-prod').value;
   const vid=document.getElementById('ped-var').value;
@@ -2596,8 +2827,17 @@ function agregarAlCarrito(){
   const v=p?.variantes.find(x=>x.id===vid);
   if(!v){return;}
   if((v.stockActual||0)===0){toast('Sin stock disponible para esta variante');return;}
-  const precio=parseFloat(document.getElementById('cart-precio').value)||0;
-  if(!precio){toast('Ingresa el precio de venta');return;}
+  // En combo/trío el precio se define una sola vez para el grupo; en
+  // individual se exige por ítem como siempre.
+  let precio;
+  if(tipoVenta==='individual'){
+    precio=parseFloat(document.getElementById('cart-precio').value)||0;
+    if(!precio){toast('Ingresa el precio de venta');return;}
+  } else {
+    const max=COMBO_N[tipoVenta];
+    if(carrito.length>=max){toast(`Un ${tipoVenta} lleva ${max} productos. Ya están agregados.`);return;}
+    precio=v.precio||0; // precio de referencia; el total va en el precio del combo
+  }
   const cantidad=paresSeleccionados||1;
   carrito.push({
     pid,vid,
@@ -2606,8 +2846,8 @@ function agregarAlCarrito(){
     cantidad,
     precio,
     precioRegistrado:v.precio||0,
-    precioBajo:!!(v.precio&&precio<v.precio),
-    precioAlto:!!(v.precio&&precio>v.precio)
+    precioBajo:tipoVenta==='individual'&&!!(v.precio&&precio<v.precio),
+    precioAlto:tipoVenta==='individual'&&!!(v.precio&&precio>v.precio)
   });
   renderCarrito();
   // Reset selección de producto para agregar otro
@@ -2654,7 +2894,20 @@ function renderCarrito(){
       </button>
     </div>`;
   }).join('');
-  unlockPedidoStep2();
+  // ── Estado del modo combo/trío ────────────────────────────────────
+  const comboG=document.getElementById('combo-precio-g');
+  const badge=document.getElementById('carrito-combo-badge');
+  if(tipoVenta!=='individual'){
+    const n=COMBO_N[tipoVenta];
+    if(comboG) comboG.style.display='block';
+    const tlabel=document.getElementById('combo-precio-tipo'); if(tlabel) tlabel.textContent=tipoVenta;
+    if(badge){badge.style.display='inline-flex';badge.textContent=(tipoVenta==='combo'?'COMBO':'TRÍO')+` ${carrito.length}/${n}`;}
+    if(carrito.length===n && comboPrecio>0){ unlockPedidoStep2(); } else { lockPedidoStep2(); }
+  } else {
+    if(comboG) comboG.style.display='none';
+    if(badge) badge.style.display='none';
+    unlockPedidoStep2();
+  }
 }
 
 // ── Tipo de destino ────────────────────────
@@ -2844,6 +3097,11 @@ function aplicarEntradaStockPedido(ped, motivo){
 
 function registrarPedido(){
   if(!carrito.length){toast('Agrega al menos un producto al carrito');return;}
+  if(tipoVenta!=='individual'){
+    const n=COMBO_N[tipoVenta];
+    if(carrito.length!==n){toast(`Un ${tipoVenta} debe tener exactamente ${n} productos.`);return;}
+    if(!comboPrecio||comboPrecio<=0){toast('Ingresa el precio del '+tipoVenta);return;}
+  }
   const nombre=document.getElementById('ped-nombre').value.trim();
   const tel=document.getElementById('ped-tel').value.trim();
   const cedula=document.getElementById('ped-cedula')?.value.trim()||'';
@@ -2920,7 +3178,9 @@ function registrarPedido(){
     productoNombre: items.length===1 ? items[0].productoNombre : items.map(i=>i.productoNombre).join(' + '),
     talla:items[0].talla, color:items[0].color, sku:items[0].sku||'',
     cantidadPares:items.reduce((s,i)=>s+i.cantidad,0),
-    precioVenta:items.reduce((s,i)=>s+i.precioVenta*i.cantidad,0),
+    tipoVenta,
+    comboPrecio: tipoVenta!=='individual' ? comboPrecio : 0,
+    precioVenta: tipoVenta!=='individual' ? comboPrecio : items.reduce((s,i)=>s+i.precioVenta*i.cantidad,0),
     precioBajo:hayPrecioBajo, precioAlto:hayPrecioAlto,
     cliente:clienteInfo,
     formaPago,
@@ -2964,6 +3224,14 @@ function registrarPedido(){
   paresSeleccionados=1;
   document.querySelectorAll('.par-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
   document.getElementById('ped-pares-custom').style.display='none';
+  // Reset del modo combo/trío a individual
+  tipoVenta='individual'; comboPrecio=0;
+  document.querySelectorAll('.tventa-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  const cpg=document.getElementById('combo-precio-g'); if(cpg) cpg.style.display='none';
+  const cpv=document.getElementById('combo-precio'); if(cpv) cpv.value='';
+  const cbb=document.getElementById('carrito-combo-badge'); if(cbb) cbb.style.display='none';
+  const tvh=document.getElementById('tipo-venta-hint'); if(tvh) tvh.style.display='none';
+  const precioGr=document.getElementById('cart-precio')?.closest('.form-group'); if(precioGr) precioGr.style.display='block';
   lockPedidoStep2();
 }
 
@@ -2989,10 +3257,11 @@ function estadoBadge(estado){
   const map={
     pendiente:'<span class="badge badge-pendiente"><i class="bi bi-hourglass-split"></i> Pendiente</span>',
     aprobado:'<span class="badge badge-aprobado"><i class="bi bi-check-circle-fill"></i> Aprobado</span>',
-    enviado:'<span class="badge badge-enviado"><i class="bi bi-truck"></i> Enviado</span>',
+    enviado:'<span class="badge badge-enviado"><i class="bi bi-truck"></i> En tránsito</span>',
+    en_oficina:'<span class="badge badge-en-oficina"><i class="bi bi-building"></i> En oficina</span>',
     entregado:'<span class="badge badge-entregado"><i class="bi bi-house-check-fill"></i> Entregado</span>',
     novedad:'<span class="badge badge-novedad"><i class="bi bi-exclamation-triangle-fill"></i> Novedad</span>',
-    devolucion:'<span class="badge badge-devolucion"><i class="bi bi-arrow-return-left"></i> Devolución</span>',
+    en_devolucion:'<span class="badge badge-en-devolucion"><i class="bi bi-arrow-return-left"></i> En devolución</span>',
     cancelado:'<span class="badge badge-cancelado"><i class="bi bi-x-circle-fill"></i> Cancelado</span>'
   };
   return map[estado]||`<span class="badge badge-gray">${estado}</span>`;
@@ -3024,17 +3293,7 @@ function renderMisPedidos(){
           <div style="font-weight:700;font-size:15px">${pedResumenCorto(ped)}</div>
           <div style="font-size:12px;color:var(--muted)">${Array.isArray(ped.items)&&ped.items.length>1?ped.items.length+' productos · ':('Talla '+ped.talla+' / '+ped.color+' · ')}${fmtD(ped.fecha)}${ped.ts?` · <i class="bi bi-clock"></i> ${fmtT(ped.ts)}`:''}</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">${(()=>{
-          const guia=getGuias().find(g=>g.pedidoId===ped.id);
-          if(!guia) return estadoBadge(ped.estado);
-          const ea=guia.estadoActual||'registrada';
-          if(ea==='entregada')   return estadoBadge('entregado');
-          if(ea==='novedad')     return estadoBadge('novedad');
-          if(ea==='devuelta')    return estadoBadge('cancelado');
-          if(ea==='en_bodega')   return '<span class="badge badge-info"><i class="bi bi-building"></i> En oficina</span>';
-          if(ea==='en_transito') return estadoBadge('enviado');
-          return estadoBadge('enviado');
-        })()}</div>
+        <div style="display:flex;gap:8px;align-items:center">${estadoBadge(estadoEfectivo(ped))}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-bottom:12px">
         <div><span style="color:var(--muted)">Cliente:</span> <strong>${ped.cliente.nombre}</strong></div>
@@ -3063,7 +3322,7 @@ function renderMisPedidos(){
 
 function renderMiniTracking(guia){
   const ea=guia.estadoActual||'registrada';
-  const badge=ea==='entregada'?estadoBadge('entregado'):ea==='novedad'?estadoBadge('novedad'):ea==='devuelta'?estadoBadge('cancelado'):ea==='en_bodega'?'<span class="badge badge-info"><i class="bi bi-building"></i> En oficina</span>':ea==='en_transito'?estadoBadge('enviado'):'<span class="badge badge-gray"><i class="bi bi-hourglass-split"></i> En camino</span>';
+  const badge=ea==='entregada'?estadoBadge('entregado'):ea==='novedad'?estadoBadge('novedad'):ea==='devuelta'?estadoBadge('cancelado'):ea==='en_bodega'?estadoBadge('en_oficina'):ea==='en_transito'?estadoBadge('enviado'):'<span class="badge badge-gray"><i class="bi bi-hourglass-split"></i> En camino</span>';
   const histReal=(guia.historial||[]).filter(h=>h.esReal);
   const ultimo=histReal[histReal.length-1];
   const fechaEst=guia.fechaEstimadaEntrega?`<div style="font-size:11px;color:var(--muted);margin-top:2px"><i class="bi bi-calendar-check"></i> Entrega est: ${guia.fechaEstimadaEntrega.slice(0,10)}</div>`:'';
@@ -3103,13 +3362,17 @@ function esMiPedido(p){
 }
 
 function estadoEfectivo(ped){
+  // Si admin marcó manualmente "en devolución", ese estado prevalece sobre la guía.
+  if(ped.estado==='en_devolucion') return 'en_devolucion';
   const guia=getGuias().find(g=>g.pedidoId===ped.id);
   if(!guia) return ped.estado;
   const ea=guia.estadoActual||'registrada';
   if(ea==='entregada')   return 'entregado';
   if(ea==='novedad')     return 'novedad';
   if(ea==='devuelta')    return 'cancelado';
-  return 'enviado'; // registrada, en_transito, en_bodega → enviado
+  if(ea==='en_bodega')   return 'en_oficina';
+  if(ea==='en_transito') return 'enviado';
+  return 'enviado'; // registrada → en tránsito
 }
 
 // ════════════════════════════════════════
@@ -3187,9 +3450,14 @@ function renderAdminPedidos(){
         ?`<div style="font-size:10px;color:#3b82f6;margin-top:2px" title="Precio sobre el registrado"><i class="bi bi-arrow-up-circle-fill"></i> Alto</div>`
         :'';
     const paresInfo=ped.cantidadPares&&ped.cantidadPares>1?`<div style="font-size:10px;color:var(--muted)">${ped.cantidadPares} pares</div>`:'';
+    const comboBadge=ped.tipoVenta==='combo'
+      ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo combo (2 productos a un precio único)"><i class="bi bi-box-seam-fill"></i> COMBO</span>`
+      :ped.tipoVenta==='trio'
+        ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo trío (3 productos a un precio único)"><i class="bi bi-boxes"></i> TRÍO</span>`
+        :'';
     html+=`<tr${ped.precioBajo?' style="background:#fffbeb"':''}>
       <td style="white-space:nowrap;font-size:12px">${fmtD(ped.fecha)}${ped.ts?`<div style="font-size:10px;color:var(--muted);margin-top:2px"><i class="bi bi-clock"></i> ${fmtT(ped.ts)}</div>`:''}</td>
-      <td><div style="font-size:13px">${pedResumen(ped)}</div>${paresInfo}</td>
+      <td><div style="font-size:13px">${pedResumen(ped)}${comboBadge}</div>${paresInfo}</td>
       <td><strong>${ped.cliente.nombre}</strong><div style="font-size:11px;color:var(--muted)">${ped.cliente.telefono}</div>
           <div style="font-size:10px;color:var(--muted)">${ped.cliente.barrio||''}${ped.cliente.ciudad?', '+ped.cliente.ciudad:''}</div></td>
       <td style="font-size:12px">${ped.cliente.ciudad||'—'}</td>
@@ -3197,20 +3465,12 @@ function renderAdminPedidos(){
       <td style="font-size:12px;white-space:nowrap">${ped.precioVenta?fmtM(ped.precioVenta):'—'}${precioBadge}</td>
       <td style="font-size:12px;color:var(--muted)">${ped.vendedorNombre||'—'}</td>
       <td style="font-size:12px">${guia?`<span style="font-family:monospace">${guia.numero}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
-      <td>${(()=>{
-        if(!guia) return estadoBadge(ped.estado);
-        const ea=guia.estadoActual||'registrada';
-        if(ea==='entregada')   return estadoBadge('entregado');
-        if(ea==='novedad')     return estadoBadge('novedad');
-        if(ea==='devuelta')    return estadoBadge('cancelado');
-        if(ea==='en_bodega')   return '<span class="badge badge-info"><i class="bi bi-building"></i> En oficina</span>';
-        if(ea==='en_transito') return estadoBadge('enviado');
-        return estadoBadge('enviado'); // tiene guía = enviado
-      })()}</td>
+      <td>${estadoBadge(estadoEfectivo(ped))}</td>
       <td><div style="display:flex;gap:4px">
         ${ped.estado==='pendiente'?`<button class="btn-icon" title="Aprobar pedido" style="color:var(--success)" onclick="aprobarPedido('${ped.id}')"><i class="bi bi-check-circle-fill"></i></button>`:''}
         <button class="btn-icon" title="Ver detalle" onclick="verDetallePedido('${ped.id}')"><i class="bi bi-eye-fill"></i></button>
-        ${estadoBloqueado(ped)?'':`<button class="btn-icon" title="Cambiar estado" onclick="abrirCambioEstado('${ped.id}')"><i class="bi bi-pencil-fill"></i></button>`}
+        <button class="btn-icon" title="Cambiar estado" onclick="abrirCambioEstado('${ped.id}')"><i class="bi bi-pencil-fill"></i></button>
+        ${isAdmin()?`<button class="btn-icon" title="Editar datos del pedido" style="color:var(--primary)" onclick="abrirEdicionPedido('${ped.id}')"><i class="bi bi-pencil-square"></i></button>`:''}
         ${!guia?`<button class="btn-icon" title="Asignar guía" onclick="abrirModalGuiaParaPedido('${ped.id}')"><i class="bi bi-truck"></i></button>`:''}
         ${isAdmin()?`<button class="btn-icon" title="Eliminar pedido" style="color:var(--danger)" onclick="eliminarPedidoGuia('${guia?guia.id:''}','${ped.id}')"><i class="bi bi-trash-fill"></i></button>`:''}
       </div></td>
@@ -3258,32 +3518,29 @@ function verDetallePedido(id){
   if(ped.notaEstado) html+=`<div class="novedad-banner"><span><i class="bi bi-chat-left-text-fill" style="color:var(--warning)"></i></span><div><strong>Nota:</strong> ${ped.notaEstado}</div></div>`;
   document.getElementById('mpd-content').innerHTML=html;
   const footer=document.getElementById('mpd-footer');
-  const esFinal = estadoBloqueado(ped);
   footer.innerHTML=`<button class="btn btn-outline" onclick="cerrarModal('modal-pedido-detalle')">Cerrar</button>
-    ${esFinal?'':`<button class="btn btn-primary" onclick="abrirCambioEstado('${id}');cerrarModal('modal-pedido-detalle')"><i class="bi bi-pencil-fill"></i> Cambiar estado</button>`}
+    <button class="btn btn-primary" onclick="abrirCambioEstado('${id}');cerrarModal('modal-pedido-detalle')"><i class="bi bi-pencil-fill"></i> Cambiar estado</button>
     <button class="btn btn-outline" style="border-color:#6366f1;color:#6366f1" onclick="rastreoLibre('${id}');cerrarModal('modal-pedido-detalle')" title="Copia el número (si existe) y abre el rastreo de Interrapidísimo"><i class="bi bi-truck-front-fill"></i> RASTREO</button>
     ${!guia?`<button class="btn btn-success" onclick="abrirModalGuiaParaPedido('${id}');cerrarModal('modal-pedido-detalle')"><i class="bi bi-truck"></i> Asignar guía</button>`:''}`;
   abrirModal('modal-pedido-detalle');
 }
 
-// Estados finales: una vez aquí, no se puede modificar el estado del pedido.
-const ESTADOS_FINALES = ['cancelado','devolucion','entregado'];
-const ETIQUETA_ESTADO_FINAL = {cancelado:'Cancelado',devolucion:'Devolución',entregado:'Entregado'};
-
-// Bloqueo de estado final: aplica a vendedores; admin puede revertir.
-function estadoBloqueado(ped){ return ESTADOS_FINALES.includes(ped.estado) && !isAdmin(); }
-
 function abrirCambioEstado(id){
+  pedidoAccionId=id;
   const ped=getPedidos().find(p=>p.id===id);
   if(!ped)return;
-  if(estadoBloqueado(ped)){
-    toast(`Este pedido está en estado "${ETIQUETA_ESTADO_FINAL[ped.estado]}" y no puede modificarse`);
-    return;
-  }
-  pedidoAccionId=id;
   document.getElementById('nuevo-estado-ped').value=ped.estado;
   document.getElementById('nota-estado-ped').value=ped.notaEstado||'';
+  const chk=document.getElementById('devolucion-ingreso-chk');
+  if(chk) chk.checked=!!ped.devolucionIngresada;
+  onCambioEstadoSel();
   abrirModal('modal-estado-pedido');
+}
+
+function onCambioEstadoSel(){
+  const sel=document.getElementById('nuevo-estado-ped');
+  const grp=document.getElementById('devolucion-ingreso-g');
+  if(sel && grp) grp.style.display = sel.value==='en_devolucion' ? 'block' : 'none';
 }
 
 // Calcula el total de unidades de un pedido (soporta items[] y formato antiguo).
@@ -3297,27 +3554,24 @@ function totalUnidadesPedido(ped){
 function confirmarCambioEstado(){
   const ped=getPedidos().find(p=>p.id===pedidoAccionId);
   if(!ped)return;
-  if(estadoBloqueado(ped)){
-    toast(`Este pedido está en estado "${ETIQUETA_ESTADO_FINAL[ped.estado]}" y no puede modificarse`);
-    cerrarModal('modal-estado-pedido');
-    return;
-  }
   const nuevoEstado=document.getElementById('nuevo-estado-ped').value;
   const nota=document.getElementById('nota-estado-ped').value.trim();
+  const devolucionIngresada=nuevoEstado==='en_devolucion' && document.getElementById('devolucion-ingreso-chk')?.checked;
   const estadoAnterior=ped.estado;
   const pedActualizado={...ped, estado:nuevoEstado, notaEstado:nota||undefined, tsEstado:Date.now()};
+  if(nuevoEstado==='en_devolucion') pedActualizado.devolucionIngresada=!!devolucionIngresada;
   let msgExtra='';
 
   // ── Ajustes de stock por cambio de estado ─────────────────────────
-  // Estados "sin stock" (no consumen inventario): cancelado y devolucion.
-  // Pasa a un estado sin stock → restituir unidades. Sale de uno → volver a descontar.
-  const esSinStock = e => e==='cancelado' || e==='devolucion';
-  if(esSinStock(nuevoEstado) && !esSinStock(estadoAnterior)){
+  // Pasa a "cancelado" → SIEMPRE devolver las unidades al inventario, a menos
+  // que el pedido ya estuviera cancelado (para no sumar dos veces) o que
+  // `stockDescontado` sea explícitamente false (señal de que el stock nunca
+  // se descontó). Sale de "cancelado" → volver a descontar.
+  if(nuevoEstado==='cancelado' && estadoAnterior!=='cancelado'){
     const debeRestituir = ped.stockDescontado!==false; // true o undefined ⇒ sí
     if(debeRestituir){
       const unidades=totalUnidadesPedido(ped);
-      const motivo = nuevoEstado==='devolucion' ? 'Devolucion' : 'Cancelacion';
-      if(aplicarEntradaStockPedido(ped,motivo)){
+      if(aplicarEntradaStockPedido(ped,'Cancelacion')){
         pedActualizado.stockDescontado=false;
         msgExtra=` · +${unidades} unidad${unidades===1?'':'es'} devuelta${unidades===1?'':'s'} al inventario`;
       } else {
@@ -3326,7 +3580,7 @@ function confirmarCambioEstado(){
     } else {
       msgExtra=' · (este pedido no tenía stock descontado)';
     }
-  } else if(esSinStock(estadoAnterior) && !esSinStock(nuevoEstado) && !ped.stockDescontado){
+  } else if(estadoAnterior==='cancelado' && nuevoEstado!=='cancelado' && !ped.stockDescontado){
     const unidades=totalUnidadesPedido(ped);
     if(aplicarSalidaStockPedido(pedActualizado)){
       pedActualizado.stockDescontado=true;
@@ -3336,9 +3590,148 @@ function confirmarCambioEstado(){
     }
   }
 
+  // ── Devolución: el stock vuelve al inventario solo cuando el producto
+  // llegó físicamente a nuestra oficina (checkbox del modal).
+  if(nuevoEstado==='en_devolucion' && devolucionIngresada && !ped.devolucionIngresada){
+    const debeRestituir = ped.stockDescontado!==false;
+    if(debeRestituir){
+      const unidades=totalUnidadesPedido(ped);
+      if(aplicarEntradaStockPedido(ped,'Devolucion')){
+        pedActualizado.stockDescontado=false;
+        msgExtra=` · +${unidades} unidad${unidades===1?'':'es'} ingresada${unidades===1?'':'s'} al inventario por devolución`;
+      } else {
+        msgExtra=' · ⚠️ ingreso a inventario falló';
+      }
+    } else {
+      msgExtra=' · (este pedido no tenía stock descontado)';
+    }
+  }
+
   writePedido(pedActualizado);
   toast(`Estado actualizado a: ${nuevoEstado}${msgExtra}`);
   cerrarModal('modal-estado-pedido');
+}
+
+// ────────────── EDICIÓN COMPLETA DE PEDIDO (ADMIN) ──────────────
+let _edicionPedidoId=null;
+function abrirEdicionPedido(id){
+  if(!isAdmin()){ toast('Solo el administrador puede editar pedidos'); return; }
+  const ped=getPedidos().find(p=>p.id===id);
+  if(!ped) return;
+  _edicionPedidoId=id;
+  const c=ped.cliente||{};
+  document.getElementById('ep-sub').textContent=`Pedido ${fmtD(ped.fecha)} · ${ped.vendedorNombre||'—'}`;
+  document.getElementById('ep-nombre').value=c.nombre||'';
+  document.getElementById('ep-tel').value=c.telefono||'';
+  document.getElementById('ep-cedula').value=c.cedula||'';
+  document.getElementById('ep-dir').value=c.direccion||'';
+  document.getElementById('ep-barrio').value=c.barrio||'';
+  document.getElementById('ep-referencia').value=c.referencia||'';
+  document.getElementById('ep-empresa').value=c.empresa||'';
+  document.getElementById('ep-ciudad').value=c.ciudad||'';
+  document.getElementById('ep-dpto').value=c.departamento||'';
+  document.getElementById('ep-localidad').value=c.localidad||'';
+  document.getElementById('ep-destino-tipo').value=c.destinoTipo||'domicilio';
+  document.getElementById('ep-notas').value=c.notas||'';
+  document.getElementById('ep-forma-pago').value=ped.formaPago||'contraentrega';
+  document.getElementById('ep-precio').value=ped.precioVenta||'';
+  document.getElementById('ep-vendedor').value=ped.vendedorNombre||'';
+  // Ítems
+  const items=Array.isArray(ped.items)&&ped.items.length
+    ? ped.items
+    : [{productoNombre:ped.productoNombre, talla:ped.talla, color:ped.color, sku:ped.sku||'', cantidad:ped.cantidadPares||1, precioVenta:ped.precioVenta}];
+  const wrap=document.getElementById('ep-items-wrap');
+  wrap.innerHTML=items.map((it,i)=>`
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Producto</label><input type="text" data-ep-it="${i}" data-ep-f="productoNombre" value="${(it.productoNombre||'').replace(/"/g,'&quot;')}"></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Talla</label><input type="text" data-ep-it="${i}" data-ep-f="talla" value="${(it.talla||'').toString().replace(/"/g,'&quot;')}"></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Color</label><input type="text" data-ep-it="${i}" data-ep-f="color" value="${(it.color||'').replace(/"/g,'&quot;')}"></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Cantidad</label><input type="number" min="1" data-ep-it="${i}" data-ep-f="cantidad" value="${it.cantidad||1}"></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Precio unit.</label><input type="number" min="0" data-ep-it="${i}" data-ep-f="precioVenta" value="${it.precioVenta||0}"></div>
+    </div>`).join('');
+  // Guía
+  const guia=getGuias().find(g=>g.pedidoId===ped.id);
+  document.getElementById('ep-guia-num').value=guia?guia.numero||'':'';
+  document.getElementById('ep-guia-trans').value=guia?guia.transportadora||'Interrapidísimo':'Interrapidísimo';
+  abrirModal('modal-editar-pedido');
+}
+
+function guardarEdicionPedido(){
+  if(!isAdmin()){ toast('Solo el administrador puede editar pedidos'); return; }
+  const ped=getPedidos().find(p=>p.id===_edicionPedidoId);
+  if(!ped) return;
+  const val=id=>document.getElementById(id).value.trim();
+  const nombre=val('ep-nombre');
+  const tel=val('ep-tel');
+  if(!nombre || !tel){ toast('Nombre y teléfono son obligatorios'); return; }
+  // Recopilar ítems
+  const wrap=document.getElementById('ep-items-wrap');
+  const inputs=wrap.querySelectorAll('input[data-ep-it]');
+  const itemsMap={};
+  inputs.forEach(inp=>{
+    const i=+inp.dataset.epIt, f=inp.dataset.epF;
+    if(!itemsMap[i]) itemsMap[i]={};
+    itemsMap[i][f]= (f==='cantidad'||f==='precioVenta') ? (parseFloat(inp.value)||0) : inp.value.trim();
+  });
+  const items=Object.keys(itemsMap).sort((a,b)=>+a-+b).map(k=>{
+    const base=(Array.isArray(ped.items)&&ped.items[+k])||{};
+    return {...base, ...itemsMap[k]};
+  });
+  const cliente={
+    ...(ped.cliente||{}),
+    nombre, telefono:tel,
+    cedula:val('ep-cedula'),
+    direccion:val('ep-dir'),
+    barrio:val('ep-barrio'),
+    referencia:val('ep-referencia'),
+    empresa:val('ep-empresa'),
+    ciudad:val('ep-ciudad'),
+    departamento:val('ep-dpto'),
+    localidad:val('ep-localidad'),
+    destinoTipo:document.getElementById('ep-destino-tipo').value,
+    notas:val('ep-notas')
+  };
+  const precioTotal=parseFloat(document.getElementById('ep-precio').value)||0;
+  const pedAct={
+    ...ped,
+    cliente,
+    items,
+    productoNombre: items.length===1 ? items[0].productoNombre : items.map(i=>i.productoNombre).join(' + '),
+    talla: items[0]?.talla || ped.talla,
+    color: items[0]?.color || ped.color,
+    cantidadPares: items.reduce((s,i)=>s+(parseInt(i.cantidad)||0),0),
+    precioVenta: precioTotal || items.reduce((s,i)=>s+(i.precioVenta*i.cantidad),0),
+    formaPago: document.getElementById('ep-forma-pago').value,
+    vendedorNombre: val('ep-vendedor') || ped.vendedorNombre,
+    tsEdicion: Date.now()
+  };
+  writePedido(pedAct);
+
+  // Guía: crear / actualizar / eliminar según número
+  const guiaActual=getGuias().find(g=>g.pedidoId===ped.id);
+  const numGuia=val('ep-guia-num');
+  const transp=val('ep-guia-trans')||'Interrapidísimo';
+  if(numGuia){
+    if(guiaActual){
+      writeGuia({...guiaActual, numero:numGuia, transportadora:transp});
+    } else {
+      const nuevaGuia={
+        id:uid(), pedidoId:ped.id, numero:numGuia, transportadora:transp,
+        ciudadDestino: cliente.ciudad, clienteNombre: cliente.nombre, clienteTelefono: cliente.telefono,
+        notas:'Editada manualmente', estadoActual:'registrada', historial:[], ultimoRastreo:null,
+        fecha: hoy(), ts: Date.now()
+      };
+      writeGuia(nuevaGuia);
+      writePedido({...pedAct, guiaId:nuevaGuia.id, estado: pedAct.estado==='pendiente'?'enviado':pedAct.estado, tsEstado:Date.now()});
+    }
+  } else if(guiaActual){
+    // Si el usuario vació el número, eliminamos la guía asociada.
+    if(USE_FIREBASE) REF.guias.child(guiaActual.id).remove();
+    localGuias=localGuias.filter(g=>g.id!==guiaActual.id);
+    writePedido({...pedAct, guiaId:null});
+  }
+  toast('Pedido actualizado');
+  cerrarModal('modal-editar-pedido');
 }
 
 // Aprobación rápida (vendedor crea → admin aprueba)
@@ -3356,7 +3749,7 @@ function abrirModalGuia(preId){
   const sel=document.getElementById('g-pedido');
   // Si el usuario actual NO es admin, restringimos al listado de sus propios pedidos.
   // Así un vendedor no ve (ni puede asociar guías a) pedidos de otros vendedores.
-  let sinGuia=getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='devolucion' && p.estado!=='entregado');
+  let sinGuia=getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='entregado');
   if(!isAdmin()) sinGuia=sinGuia.filter(esMiPedido);
   sel.innerHTML='<option value="">— Selecciona un cliente —</option>'+
     sinGuia.map(p=>`<option value="${p.id}">${p.cliente.nombre} — ${p.productoNombre} T${p.talla} (${fmtD(p.fecha)})</option>`).join('');
@@ -3459,7 +3852,7 @@ function importarGuiasConfirmadas(input){
 // Estrategia (en orden de confianza): cédula → teléfono → nombre.
 // Cada pedido solo puede recibir UNA guía (Set "usados" evita doble asignación).
 function matchGuiasImportadas(rows){
-  const pedidos=getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='devolucion' && p.estado!=='entregado');
+  const pedidos=getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='entregado');
   const norm=s=>String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
   const onlyD=s=>String(s||'').replace(/\D/g,'');
   // Índices para búsqueda O(1) por cédula y teléfono
@@ -3531,7 +3924,7 @@ function mostrarImportGuias(){
     document.getElementById('importar-guias-resumen').textContent='';
     abrirModal('modal-importar-guias'); return;
   }
-  const sinGuia=getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='devolucion' && p.estado!=='entregado');
+  const sinGuia=getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='entregado');
   const opts=sinGuia.map(p=>`<option value="${p.id}">${p.cliente.nombre} — ${p.productoNombre} T${p.talla}</option>`).join('');
   listEl.innerHTML=_importGuias.map((it,i)=>`
     <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border)">
@@ -3588,7 +3981,7 @@ function renderGuias(){
   const peds=getPedidos();
   // Contar por estado real de la guía
   const contarEstado=(e)=>{
-    if(e==='sin_guia')   return peds.filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='devolucion').length;
+    if(e==='sin_guia')   return peds.filter(p=>!p.guiaId && p.estado!=='cancelado').length;
     if(e==='en_bodega')  return guiasAll.filter(g=>g.estadoActual==='en_bodega').length;
     if(e==='enviado')    return guiasAll.filter(g=>g.estadoActual==='en_transito'||!g.estadoActual||g.estadoActual==='registrada').length;
     if(e==='novedad')    return guiasAll.filter(g=>g.estadoActual==='novedad').length;
@@ -3622,7 +4015,7 @@ function renderGuiasTabla(){
 
   // Filtro "Sin guía" — muestra pedidos sin guía en tabla especial
   if(_guiasFiltroEstado==='sin_guia'){
-    const sinGuia=getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='devolucion');
+    const sinGuia=getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado');
     const qRows=q?sinGuia.filter(p=>(p.cliente?.nombre||'').toLowerCase().includes(q)||(p.cliente?.telefono||'').includes(q)):sinGuia;
     if(!qRows.length){cont.innerHTML=`<div class="empty"><div class="empty-icon"><i class="bi bi-bag-check" style="font-size:38px;color:var(--success)"></i></div><h3>Todos los pedidos tienen guía asignada</h3></div>`;return;}
     cont.innerHTML=`<table><thead><tr><th>Fecha</th><th>Producto</th><th>Cliente</th><th>Ciudad</th><th>Vendedor</th><th>Acciones</th></tr></thead><tbody>`+
@@ -3687,7 +4080,7 @@ function eliminarPedidoGuia(guiaId, pedidoId){
   if(pedidoId){
     const ped=getPedidos().find(p=>p.id===pedidoId);
     if(ped){
-      const estabaDescontado = ped.stockDescontado!==false && ped.estado!=='cancelado' && ped.estado!=='devolucion';
+      const estabaDescontado = ped.stockDescontado!==false && ped.estado!=='cancelado';
       if(estabaDescontado){
         if(aplicarEntradaStockPedido(ped,'Eliminacion pedido')){
           restituido=true;
@@ -3844,7 +4237,7 @@ async function procesarPDF(file){
 function autoAsignarPedidoPorCliente({nombre, ciudad}){
   if(!nombre && !ciudad) return '';
   const norm = s => String(s||'').toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g,'');
-  const sinGuia = getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='devolucion' && p.estado!=='entregado');
+  const sinGuia = getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='entregado');
   // Buscar coincidencia exacta de nombre primero
   if(nombre){
     const match = sinGuia.find(p=>{
@@ -3882,7 +4275,7 @@ async function abrirModalPDFGuias(input){
 
 function renderPDFGuiasLista(){
   const lista = document.getElementById('pdf-guias-lista');
-  const sinGuia = getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='devolucion' && p.estado!=='entregado');
+  const sinGuia = getPedidos().filter(p=>!p.guiaId && p.estado!=='cancelado' && p.estado!=='entregado');
   const opsPedidos = '<option value="">— Sin asignar —</option>'+
     sinGuia.map(p=>`<option value="${p.id}">${p.cliente.nombre} — ${p.productoNombre} T${p.talla}</option>`).join('');
 
@@ -3998,7 +4391,7 @@ function exportarGuiasMasivas(){
   const mesInicio=today.slice(0,8)+'01';
   // Excluir pedidos cancelados, entregados o que ya tienen guía registrada
   const guiasExistentes=new Set(getGuias().map(g=>g.pedidoId));
-  let pedidos=getPedidos().filter(p=>p.estado!=='cancelado'&&p.estado!=='devolucion'&&p.estado!=='entregado'&&p.estado!=='enviado'&&!p.guiaId&&!guiasExistentes.has(p.id));
+  let pedidos=getPedidos().filter(p=>p.estado!=='cancelado'&&p.estado!=='entregado'&&p.estado!=='enviado'&&!p.guiaId&&!guiasExistentes.has(p.id));
   if(filtroEstado) pedidos=pedidos.filter(p=>p.estado===filtroEstado);
   if(filtroVend)   pedidos=pedidos.filter(p=>p.vendedorNombre===filtroVend);
   if(filtroFechaDia){
@@ -4347,7 +4740,7 @@ async function rastrearGuia(guiaId){
           // Si la guía se devolvió y el pedido aún tenía stock descontado,
           // restituimos las unidades al inventario y dejamos movimiento en
           // historial (igual que la cancelación manual).
-          const estabaDescontado = ped.stockDescontado!==false && ped.estado!=='cancelado' && ped.estado!=='devolucion';
+          const estabaDescontado = ped.stockDescontado!==false && ped.estado!=='cancelado';
           if(nuevoEstadoPed==='cancelado' && estabaDescontado){
             if(aplicarEntradaStockPedido(ped,'Devolucion guia')){
               pedSync.stockDescontado=false;
@@ -4456,21 +4849,35 @@ function getCatIcon(cat=''){
 }
 function abrirPickerProducto(){
   const catSel=document.getElementById('picker-cat');
-  const cats=[...new Set(getProds().map(p=>p.categoria||'Sin categoría').filter(Boolean))].sort();
+  const soloAccesorios = tipoVenta==='combo'||tipoVenta==='trio';
+  let cats=[...new Set(getProds().map(p=>p.categoria||'Sin categoría').filter(Boolean))].sort();
+  if(soloAccesorios) cats=cats.filter(c=>esCategoriaComboPermitida(c));
   const catActual=catSel?.value||'';
   if(catSel){ catSel.innerHTML='<option value="">Todas las categorías</option>'+cats.map(c=>`<option value="${c}"${c===catActual?' selected':''}>${c}</option>`).join(''); }
   const si=document.getElementById('picker-search'); if(si) si.value='';
   renderPickerProductos();
   abrirModal('modal-picker-producto');
 }
+// En combo/trío solo se permiten accesorios tipo billetera o bolso (no calzado).
+function esCategoriaComboPermitida(categoria){
+  const c=(categoria||'').toLowerCase();
+  return /billetera|bolso|cartera|monedero/.test(c);
+}
 function renderPickerProductos(){
   const q=(document.getElementById('picker-search')?.value||'').toLowerCase();
   const cat=document.getElementById('picker-cat')?.value||'';
   let prods=getProds();
+  const soloAccesorios = tipoVenta==='combo'||tipoVenta==='trio';
+  if(soloAccesorios) prods=prods.filter(p=>esCategoriaComboPermitida(p.categoria));
   if(q) prods=prods.filter(p=>p.nombre.toLowerCase().includes(q)||(p.categoria||'').toLowerCase().includes(q));
-  if(cat) prods=prods.filter(p=>(p.categoria||''===cat||p.categoria===cat));
+  if(cat) prods=prods.filter(p=>(p.categoria||'Sin categoría')===cat);
   const grid=document.getElementById('picker-grid'); if(!grid) return;
-  if(!prods.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon"><i class="bi bi-search"></i></div><h3>Sin resultados</h3></div>';return;}
+  if(!prods.length){
+    grid.innerHTML=soloAccesorios
+      ? `<div class="empty" style="grid-column:1/-1"><div class="empty-icon"><i class="bi bi-bag-x"></i></div><h3>Sin billeteras ni bolsos disponibles</h3><p style="font-size:12px;color:var(--muted);margin-top:4px">El combo/trío solo admite productos cuya categoría sea billetera o bolso. El calzado no se puede combinar.</p></div>`
+      : '<div class="empty" style="grid-column:1/-1"><div class="empty-icon"><i class="bi bi-search"></i></div><h3>Sin resultados</h3></div>';
+    return;
+  }
   grid.innerHTML=prods.map((p,i)=>{
     const stock=p.variantes.reduce((s,v)=>s+(v.stockActual||0),0);
     const sinStock=stock===0;
@@ -4507,38 +4914,38 @@ function seleccionarProductoPicker(pid){
 //  CIUDADES DE COLOMBIA
 // ════════════════════════════════════════
 const CO_DEPTS={
-"Amazonas":["Leticia","Puerto Narino","El Encanto","La Chorrera","La Pedrera","La Victoria","Miriti-Parana","Puerto Alegria","Puerto Arica","Puerto Santander","Tarapaca"],
-"Antioquia":["Medellin","Abejorral","Abriaqui","Alejandria","Amaga","Amalfi","Andes","Angelopolis","Angostura","Anori","Anza","Apartado","Arboletes","Argelia","Armenia","Barbosa","Bello","Betania","Betulia","Bolombolo","Briceno","Buritica","Caceres","Caicedo","Caldas","Campamento","Canasgordas","Caracoli","Caramanta","Carepa","Carolina del Principe","Caucasia","Chigorodo","Cisneros","Cocorna","Currulao","Concepcion","Concordia","Copacabana","Dabeiba","Don Matias","Doradal","Ebejico","El Bagre","El Carmen de Viboral","El Santuario","Envigado","Fredonia","Frontino","Giraldo","Girardota","Gomez Plata","Granada","Guadalupe","Guarne","Guatape","Heliconia","Hispania","Itagui","Ituango","Jardin","Jerico","La Ceja","La Estrella","La Pintada","La Union","Liborina","Maceo","Marinilla","Montebello","Murindo","Mutata","Narino","Nechi","Necocli","Olaya","Penol","Peque","Pueblorrico","Puerto Berrio","Puerto Nare","Puerto Triunfo","Remedios","Retiro","Rionegro","Sabanalarga","Sabaneta","Salgar","San Andres de Cuerquia","San Antonio de Prado","San Carlos","San Cristobal","San Francisco","San Jeronimo","San Jose de Apartado","San Jose de la Montana","San Jose del Nus","San Juan de Uraba","San Luis","San Pedro de los Milagros","San Pedro de Uraba","San Rafael","San Roque","San Vicente","Santa Elena","Santa Barbara","Santa Rosa de Osos","Santo Domingo","Segovia","Sonson","Sopetran","Tamesis","Taraza","Tarso","Titiribi","Toledo","Turbo","Uramita","Urrao","Valdivia","Valparaiso","Vegachi","Venecia","Vigia del Fuerte","Yali","Yarumal","Yolombo","Yondo","Zaragoza"],
-"Arauca":["Arauca","Arauquita","Betoyes","Cano Limon","Cravo Norte","Fortul","Puerto Jordan","Puerto Rondon","Saravena","Tame"],
-"Atlantico":["Barranquilla","Baranoa","Campo de la Cruz","Candelaria","Galapa","Galerazamba","Juan de Acosta","Luruaco","Malambo","Manati","Palmar de Varela","Piojo","Polonuevo","Ponedera","Pradomar","Puerto Colombia","Repelon","Sabanagrande","Sabanalarga","Santa Lucia","Santa Veronica","Santo Tomas","Soledad","Suan","Tubara","Usiacuri"],
-"Bolivar":["Cartagena","Achi","Altos del Rosario","Arenal","Arjona","Arroyohondo","Barranco de Loba","Baru","Bocachica","Calamar","Cantagallo","Cicuco","Clemencia","Cordoba","El Carmen de Bolivar","El Guamo","El Penon","Hatillo de Loba","La Boquilla","Magangue","Mahates","Margarita","Maria la Baja","Mompox","Montecristo","Morales","Norosi","Pasacaballos","Pinillos","Regidor","Rio Viejo","San Basilio de Palenque","San Cristobal","San Estanislao","San Fernando","San Jacinto","San Jacinto del Cauca","San Juan Nepomuceno","San Martin de Loba","San Pablo","Santa Catalina","Santa Rosa","Santa Rosa del Sur","Simiti","Soplaviento","Talaigua Nuevo","Tierrabomba","Tiquisio","Turbaco","Turbana","Villanueva","Zambrano"],
-"Boyaca":["Tunja","Almeida","Aquitania","Arcabuco","Berbeo","Beteitiva","Boavita","Boyaca","Briceno","Buenavista","Busbanza","Caldas","Campohermoso","Cerinza","Chinavita","Chiquinquira","Chiquiza","Chiscas","Chita","Chitaraque","Chivata","Chivor","Cienega","Combita","Coper","Corrales","Covarachia","Cubara","Cucaita","Duitama","El Cocuy","El Espino","Firavitoba","Floresta","Gachantiva","Gameza","Garagoa","Guacamayas","Guateque","Guayata","Guican","Iza","Jenesano","Jerico","La Capilla","La Uvita","La Victoria","Labranzagrande","Macanal","Maripi","Miraflores","Mongua","Mongui","Moniquira","Muzo","Nobsa","Nuevo Colon","Oicata","Otanche","Pachavita","Paez","Paipa","Pajarito","Panqueba","Pauna","Paya","Paz de Rio","Pesca","Pisba","Puerto Boyaca","Quipama","Ramiriqui","Raquira","Rondon","Saboya","Sachica","Samaca","San Eduardo","San Jose de Pare","San Luis de Gaceno","San Mateo","San Miguel de Sema","San Pablo de Borbur","Santana","Santa Maria","Santa Rosa de Viterbo","Santa Sofia","Sativanorte","Sativasur","Siachoque","Soata","Socota","Socha","Sogamoso","Somondoco","Sora","Soraca","Sotaquira","Susacon","Sutamarchan","Sutatenza","Tasco","Tenza","Tibana","Tibasosa","Tinjaca","Tipacoque","Toca","Togui","Topaga","Tota","Turmeque","Tuta","Tutaza","Umbita","Ventaquemada","Villa de Leyva","Viracacha","Zetaquira"],
-"Caldas":["Manizales","Aguadas","Anserma","Aranzazu","Belalcazar","Chinchina","Filadelfia","La Dorada","La Merced","Manzanares","Marmato","Marquetalia","Marulanda","Neira","Norcasia","Pacora","Palestina","Pensilvania","Riosucio","Risaralda","Salamina","Samana","San Jose","Supia","Victoria","Villamaria","Viterbo"],
-"Caqueta":["Florencia","Albania","Belen de los Andaquies","Cartagena del Chaira","Curillo","El Doncello","El Paujil","La Montanita","Milan","Morelia","Puerto Rico","San Jose del Fragua","San Vicente del Caguan","Solano","Solita","Valparaiso"],
-"Casanare":["Yopal","Aguazul","Chameza","Hato Corozal","La Salina","Mani","Monterrey","Nunchia","Orocue","Paz de Ariporo","Pore","Recetor","Sabanalarga","Sacama","San Luis de Palenque","Tamara","Tauramena","Trinidad","Villanueva"],
-"Cauca":["Popayan","Almaguer","Argelia","Balboa","Bolivar","Buenos Aires","Cajibio","Caldono","Caloto","Corinto","El Tambo","Florencia","Guachene","Guapi","Inza","Jambalo","La Sierra","La Vega","Lopez de Micay","Mercaderes","Miranda","Mondomo","Morales","Padilla","Paez","Patia","Piamonte","Piendamo","Puerto Tejada","Purace","Rosas","San Sebastian","Santa Rosa","Santander de Quilichao","Silvia","Sotara","Suarez","Sucre","Timbio","Timbiqui","Toribio","Totoro","Villa Rica"],
-"Cesar":["Valledupar","Aguachica","Agustin Codazzi","Astrea","Atanquez","Becerril","Bosconia","Chimichagua","Chiriguana","Curumani","El Copey","El Paso","Gamarra","Gonzalez","La Gloria","La Jagua de Ibirico","La Loma","La Paz","Manaure Balcon del Cesar","Pailitas","Pelaya","Pueblo Bello","Rio de Oro","San Alberto","San Diego","San Martin","Tamalameque"],
-"Choco":["Quibdo","Acandi","Alto Baudo","Atrato","Bagado","Bahia Solano","Bajo Baudo","Bojaya","Capurgana","Carmen del Darien","Certegui","Condoto","El Carmen de Atrato","El Litoral del San Juan","El Valle","Istmina","Jurado","Lloro","Medio Atrato","Medio Baudo","Medio San Juan","Novita","Nuqui","Rio Iro","Rio Quito","Riosucio","San Jose del Palmar","Sapzurro","Sipi","Tado","Unguia","Union Panamericana"],
-"Cordoba":["Monteria","Ayapel","Buenavista","Canalete","Cerete","Chima","Chinu","Cienaga de Oro","Cotorra","La Apartada","Lorica","Los Cordobas","Momil","Montelibano","Monitos","Planeta Rica","Pueblo Nuevo","Puerto Escondido","Puerto Libertador","Purisima","Sahagun","San Andres de Sotavento","San Antero","San Bernardo del Viento","San Carlos","San Jose de Ure","San Pelayo","Tierralta","Tuchin","Valencia"],
-"Cundinamarca":["Bogota","Agua de Dios","Alban","Anapoima","Ancizar","Anolaima","Apulo","Arbelaez","Beltran","Bituima","Bojaca","Cabrera","Cachipay","Cajica","Caparrapi","Caqueza","Carmen de Carupa","Chaguani","Chia","Chipaque","Choachi","Choconta","Cogua","Cota","Cucunuba","El Colegio","El Penon","El Rosal","Facatativa","Fomeque","Fosca","Funza","Fuquene","Fusagasuga","Gachala","Gachancipa","Gacheta","Gama","Girardot","Granada","Guacheta","Guaduas","Guasca","Guataqui","Guatavita","Guayabal de Siquima","Guayabetal","Gutierrez","Jerusalen","Junin","La Calera","La Mesa","La Palma","La Pena","La Vega","Lenguazaque","Macheta","Madrid","Manta","Medina","Mosquera","Narino","Nemocon","Nilo","Nimaima","Nocaima","Pacho","Paime","Pandi","Paratebueno","Pasca","Puerto Salgar","Puli","Quebradanegra","Quetame","Quipile","Ricaurte","San Antonio del Tequendama","San Bernardo","San Cayetano","San Francisco","San Juan de Rioseco","Sasaima","Sesquile","Sibate","Silvania","Simijaca","Soacha","Sopo","Subachoque","Suesca","Supata","Susa","Sutatausa","Tabio","Tausa","Tena","Tenjo","Tibacuy","Tibirita","Tocaima","Tocancipa","Topaipi","Ubala","Ubaque","Ubate","Une","Utica","Vergara","Viani","Villa de San Diego de Ubate","Villagomez","Villapinzon","Villeta","Viota","Yacopi","Zipacon","Zipaquira"],
-"Guainia":["Inirida","Barranco Minas","Cacahual","La Guadalupe","Mapiripana","Morichal","Pana Pana","Puerto Colombia","San Felipe"],
-"Guaviare":["San Jose del Guaviare","Calamar","El Retorno","Miraflores"],
-"Huila":["Neiva","Acevedo","Agrado","Aipe","Algeciras","Altamira","Baraya","Bruselas","Campoalegre","Colombia","Elias","Garzon","Gigante","Guadalupe","Hobo","Iquira","Isnos","La Argentina","La Plata","Nataga","Oporapa","Paicol","Palermo","Palestina","Pital","Pitalito","Rivera","Saladoblanco","San Agustin","Santa Maria","Suaza","Tarqui","Tesalia","Tello","Teruel","Timana","Villavieja","Yaguara"],
-"La Guajira":["Riohacha","Albania","Barrancas","Cabo de la Vela","Camarones","Dibulla","Distraccion","El Molino","Fonseca","Hatonuevo","La Jagua del Pilar","Maicao","Manaure","Mayapo","Palomino","Punta Gallinas","San Juan del Cesar","Uribia","Urumita","Villanueva"],
-"Magdalena":["Santa Marta","Algarrobo","Aracataca","Ariguani","Bonda","Buritaca","Cerro de San Antonio","Chibolo","Cienaga","Concordia","El Banco","El Pinon","El Reten","El Rodadero","Fundacion","Guachaca","Guamal","Minca","Nueva Granada","Palomar","Pedraza","Pijino del Carmen","Pivijay","Plato","Puebloviejo","Remolino","Sabanas de San Angel","Salamina","San Sebastian de Buenavista","San Zenon","Santa Ana","Santa Barbara de Pinto","Sitionuevo","Taganga","Tenerife","Zapayan","Zona Bananera"],
-"Meta":["Villavicencio","Acacias","Barranca de Upia","Cabuyaro","Castilla la Nueva","Cubarral","Cumaral","El Calvario","El Castillo","El Dorado","Fuente de Oro","Granada","Guamal","La Macarena","Lejanias","Mapiripan","Mesetas","La Uribe","Puerto Concordia","Puerto Gaitan","Puerto Lleras","Puerto Lopez","Puerto Rico","Restrepo","San Carlos de Guaroa","San Juan de Arama","San Juanito","San Martin","Uribe","Vistahermosa"],
-"Narino":["Pasto","Alban","Aldana","Ancuya","Arboleda","Barbacoas","Belen","Buesaco","Colon","Consaca","Contadero","Cordoba","Cuaspud","Cumbal","Cumbitara","El Charco","El Penol","El Rosario","El Tablon de Gomez","El Tambo","Francisco Pizarro","Funes","Guachucal","Guaitarilla","Gualmatan","Iles","Imues","Ipiales","La Cruz","La Florida","La Llanada","La Tola","La Union","Leiva","Linares","Los Andes","Magui","Mallama","Mosquera","Narino","Olaya Herrera","Ospina","Policarpa","Potosi","Providencia","Puerres","Pupiales","Ricaurte","Roberto Payan","Samaniego","San Bernardo","San Lorenzo","San Pablo","San Pedro de Cartago","Sandona","Santa Barbara","Santacruz","Sapuyes","Taminango","Tangua","Tumaco","Tuquerres","Yacuanquer"],
-"Norte de Santander":["Cucuta","Abrego","Arboledas","Bochalema","Bucarasica","Cachira","Cacota","Chinacota","Chitaga","Convencion","Cucutilla","Durania","El Carmen","El Tarra","El Zulia","Gramalote","Hacari","Herran","Labateca","La Esperanza","La Playa","Los Patios","Lourdes","Mutiscua","Ocana","Pamplona","Pamplonita","Puerto Santander","Ragonvalia","Salazar","San Calixto","San Cayetano","Santiago","Sardinata","Silos","Teorama","Tibu","Toledo","Villa Caro","Villa del Rosario"],
-"Putumayo":["Mocoa","Colon","La Dorada","La Hormiga","Leguizamo","Orito","Puerto Asis","Puerto Caicedo","Puerto Guzman","San Francisco","San Miguel","Santiago","Sibundoy","Valle del Guamuez","Villagarzon"],
-"Quindio":["Armenia","Buenavista","Calarca","Circasia","Cordoba","Filandia","Genova","La Tebaida","Montenegro","Pijao","Quimbaya","Salento"],
-"Risaralda":["Pereira","Apia","Balboa","Belen de Umbria","Dosquebradas","Guatica","La Celia","La Virginia","Marsella","Mistrato","Pueblo Rico","Quinchia","Santa Rosa de Cabal","Santuario"],
-"San Andres y Providencia":["San Andres","La Loma","San Luis","Providencia","Santa Catalina"],
-"Santander":["Bucaramanga","Aguada","Albania","Aratoca","Barbosa","Barichara","Barrancabermeja","Betulia","Bolivar","Cabrera","California","Carcasi","Cepita","Cerrito","Charala","Charta","Chima","Chipata","Cimitarra","Concepcion","Confines","Contratacion","Coromoro","Curiti","El Carmen de Chucuri","El Guacamayo","El Penon","El Playon","Encino","Enciso","Florian","Floridablanca","Galan","Gambita","Giron","Guaca","Guadalupe","Guapota","Guavata","Guepsa","Hato","Jesus Maria","Jordan","La Belleza","La Paz","Landazuri","Lebrija","Los Santos","Macaravita","Malaga","Matanza","Mogotes","Molagavita","Ocamonte","Oiba","Onzaga","Palmar","Palmas del Socorro","Paramo","Piedecuesta","Pinchote","Puente Nacional","Puerto Parra","Puerto Wilches","Rionegro","Sabana de Torres","San Andres","San Benito","San Gil","San Joaquin","San Jose de Miranda","San Miguel","San Vicente de Chucuri","Santa Barbara","Santa Helena del Opon","Simacota","Socorro","Suaita","Sucre","Surata","Tona","Valle de San Jose","Velez","Vetas","Villanueva","Zapatoca"],
-"Sucre":["Sincelejo","Berrugas","Buenavista","Caimito","Coloso","Corozal","Covenas","Chalan","El Roble","Galeras","Guaranda","La Union","Los Palmitos","Majagual","Morroa","Ovejas","Palmito","Rincon del Mar","Sampues","San Benito Abad","San Juan de Betulia","San Marcos","San Onofre","San Pedro","San Luis de Since","Santiago de Tolu","Sucre","Toluviejo"],
-"Tolima":["Ibague","Alpujarra","Alvarado","Ambalema","Anzoategui","Armero","Ataco","Cajamarca","Carmen de Apicala","Casabianca","Chaparral","Coello","Coyaima","Cunday","Dolores","Espinal","Falan","Flandes","Fresno","Guamo","Herveo","Honda","Icononzo","Lerida","Libano","Mariquita","Melgar","Murillo","Natagaima","Ortega","Palocabildo","Piedras","Planadas","Prado","Purificacion","Rioblanco","Roncesvalles","Rovira","Sabandija","Saldana","San Antonio","San Luis","Santa Isabel","Suarez","Valle de San Juan","Venadillo","Villahermosa","Villarrica"],
-"Valle del Cauca":["Cali","Alcala","Andalucia","Ansermanuevo","Argelia","Bolivar","Buenaventura","Buga","Bugalagrande","Caicedonia","Calima","Candelaria","Cartago","Dagua","El Aguila","El Cairo","El Cerrito","El Dovio","El Queremal","Florida","Ginebra","Guacari","Jamundi","Juanchaco","La Cumbre","La Union","La Victoria","Ladrilleros","Obando","Palmira","Pance","Pradera","Restrepo","Riofrio","Roldanillo","Rozo","San Cipriano","San Pedro","Sevilla","Toro","Trujillo","Tulua","Ulloa","Versalles","Vijes","Yotoco","Yumbo","Zarzal"],
-"Vaupes":["Mitu","Caruru","Pacoa","Papunaua","Taraira","Yavarate"],
-"Vichada":["Puerto Carreno","Cumaribo","La Primavera","Santa Rosalia"]
+"Amazonas":["Leticia","Puerto Nariño","El Encanto","La Chorrera","La Pedrera","La Victoria","Mirití-Paraná","Puerto Alegría","Puerto Arica","Puerto Santander","Tarapacá"],
+"Antioquia":["Medellín","Abejorral","Abriaquí","Alejandría","Amagá","Amalfi","Andes","Angelópolis","Angostura","Anorí","Anzá","Apartadó","Arboletes","Argelia","Armenia","Barbosa","Bello","Betania","Betulia","Briceño","Buriticá","Cáceres","Caicedo","Caldas","Campamento","Cañasgordas","Caracolí","Caramanta","Carepa","Carolina del Príncipe","Caucasia","Chigorodó","Cisneros","Cocorná","Concepción","Concordia","Copacabana","Dabeiba","Don Matías","Ebéjico","El Bagre","El Carmen de Viboral","El Santuario","Envigado","Fredonia","Frontino","Giraldo","Girardota","Gómez Plata","Granada","Guadalupe","Guarne","Guatapé","Heliconia","Hispania","Itagüí","Ituango","Jardín","Jericó","La Ceja","La Estrella","La Pintada","La Unión","Liborina","Maceo","Marinilla","Montebello","Murindó","Mutatá","Nariño","Nechí","Necoclí","Olaya","Peñol","Peque","Pueblorrico","Puerto Berrío","Puerto Nare","Puerto Triunfo","Remedios","Retiro","Rionegro","Sabanalarga","Sabaneta","Salgar","San Andrés de Cuerquía","San Carlos","San Francisco","San Jerónimo","San José de la Montaña","San Juan de Urabá","San Luis","San Pedro de los Milagros","San Pedro de Urabá","San Rafael","San Roque","San Vicente","Santa Bárbara","Santa Rosa de Osos","Santo Domingo","Segovia","Sonsón","Sopetrán","Támesis","Tarazá","Tarso","Titiribí","Toledo","Turbo","Uramita","Urrao","Valdivia","Valparaíso","Vegachí","Venecia","Vigía del Fuerte","Yalí","Yarumal","Yolombó","Yondó","Zaragoza"],
+"Arauca":["Arauca","Arauquita","Cravo Norte","Fortul","Puerto Rondón","Saravena","Tame"],
+"Atlántico":["Barranquilla","Baranoa","Campo de la Cruz","Candelaria","Galapa","Juan de Acosta","Luruaco","Malambo","Manatí","Palmar de Varela","Piojó","Polonuevo","Ponedera","Puerto Colombia","Repelón","Sabanagrande","Sabanalarga","Santa Lucía","Santo Tomás","Soledad","Suan","Tubará","Usiacurí"],
+"Bolívar":["Cartagena","Achí","Altos del Rosario","Arenal","Arjona","Arroyohondo","Barranco de Loba","Calamar","Cantagallo","Cicuco","Clemencia","Córdoba","El Carmen de Bolívar","El Guamo","El Peñón","Hatillo de Loba","Magangué","Mahates","Margarita","María la Baja","Mompox","Montecristo","Morales","Norosí","Pinillos","Regidor","Río Viejo","San Cristóbal","San Estanislao","San Fernando","San Jacinto","San Jacinto del Cauca","San Juan Nepomuceno","San Martín de Loba","San Pablo","Santa Catalina","Santa Rosa","Santa Rosa del Sur","Simití","Soplaviento","Talaigua Nuevo","Tiquisio","Turbaco","Turbaná","Villanueva","Zambrano"],
+"Boyacá":["Tunja","Almeida","Aquitania","Arcabuco","Berbeo","Betéitiva","Boavita","Boyacá","Briceño","Buenavista","Busbanzá","Caldas","Campohermoso","Cerinza","Chinavita","Chiquinquirá","Chíquiza","Chiscas","Chita","Chitaraque","Chivatá","Chivor","Ciénega","Cómbita","Coper","Corrales","Covarachía","Cubará","Cucaita","Duitama","El Cocuy","El Espino","Firavitoba","Floresta","Gachantivá","Gámeza","Garagoa","Guacamayas","Guateque","Guayatá","Güicán","Iza","Jenesano","Jericó","La Capilla","La Uvita","La Victoria","Labranzagrande","Macanal","Maripí","Miraflores","Mongua","Monguí","Moniquirá","Muzo","Nobsa","Nuevo Colón","Oicatá","Otanche","Pachavita","Páez","Paipa","Pajarito","Panqueba","Pauna","Paya","Paz de Río","Pesca","Pisba","Puerto Boyacá","Quípama","Ramiriquí","Ráquira","Rondón","Saboyá","Sáchica","Samacá","San Eduardo","San José de Pare","San Luis de Gaceno","San Mateo","San Miguel de Sema","San Pablo de Borbur","Santana","Santa María","Santa Rosa de Viterbo","Santa Sofía","Sativanorte","Sativasur","Siachoque","Soatá","Socotá","Socha","Sogamoso","Somondoco","Sora","Soracá","Sotaquirá","Susacón","Sutamarchán","Sutatenza","Tasco","Tenza","Tibaná","Tibasosa","Tinjacá","Tipacoque","Toca","Togüí","Tópaga","Tota","Turmequé","Tuta","Tutazá","Úmbita","Ventaquemada","Villa de Leyva","Viracachá","Zetaquira"],
+"Caldas":["Manizales","Aguadas","Anserma","Aranzazu","Belalcázar","Chinchiná","Filadelfia","La Dorada","La Merced","Manzanares","Marmato","Marquetalia","Marulanda","Neira","Norcasia","Pácora","Palestina","Pensilvania","Riosucio","Risaralda","Salamina","Samaná","San José","Supía","Victoria","Villamaría","Viterbo"],
+"Caquetá":["Florencia","Albania","Belén de los Andaquíes","Cartagena del Chairá","Curillo","El Doncello","El Paujil","La Montañita","Milán","Morelia","Puerto Rico","San José del Fragua","San Vicente del Caguán","Solano","Solita","Valparaíso"],
+"Casanare":["Yopal","Aguazul","Chámeza","Hato Corozal","La Salina","Maní","Monterrey","Nunchía","Orocué","Paz de Ariporo","Pore","Recetor","Sabanalarga","Sácama","San Luis de Palenque","Támara","Tauramena","Trinidad","Villanueva"],
+"Cauca":["Popayán","Almaguer","Argelia","Balboa","Bolívar","Buenos Aires","Cajibío","Caldono","Caloto","Corinto","El Tambo","Florencia","Guachené","Guapi","Inzá","Jambaló","La Sierra","La Vega","López de Micay","Mercaderes","Miranda","Morales","Padilla","Páez","Patía","Piamonte","Piendamó","Puerto Tejada","Puracé","Rosas","San Sebastián","Santa Rosa","Santander de Quilichao","Silvia","Sotara","Suárez","Sucre","Timbío","Timbiquí","Toribío","Totoró","Villa Rica"],
+"Cesar":["Valledupar","Aguachica","Agustín Codazzi","Astrea","Becerril","Bosconia","Chimichagua","Chiriguaná","Curumaní","El Copey","El Paso","Gamarra","González","La Gloria","La Jagua de Ibirico","La Paz","Manaure Balcón del Cesar","Pailitas","Pelaya","Pueblo Bello","Río de Oro","La Paz","San Alberto","San Diego","San Martín","Tamalameque"],
+"Chocó":["Quibdó","Acandí","Alto Baudó","Atrato","Bagadó","Bahía Solano","Bajo Baudó","Bojayá","Carmen del Darién","Cértegui","Condoto","El Carmen de Atrato","El Litoral del San Juan","Istmina","Juradó","Lloró","Medio Atrato","Medio Baudó","Medio San Juan","Nóvita","Nuquí","Río Iro","Río Quito","Riosucio","San José del Palmar","Sipí","Tadó","Unguía","Unión Panamericana"],
+"Córdoba":["Montería","Ayapel","Buenavista","Canalete","Cereté","Chimá","Chinú","Ciénaga de Oro","Cotorra","La Apartada","Lorica","Los Córdobas","Momil","Montelíbano","Moñitos","Planeta Rica","Pueblo Nuevo","Puerto Escondido","Puerto Libertador","Purísima","Sahagún","San Andrés de Sotavento","San Antero","San Bernardo del Viento","San Carlos","San José de Uré","San Pelayo","Tierralta","Tuchín","Valencia"],
+"Cundinamarca":["Bogotá","Agua de Dios","Albán","Anapoima","Ancízar","Anolaima","Apulo","Arbeláez","Beltrán","Bituima","Bojacá","Cabrera","Cachipay","Cajicá","Caparrapí","Cáqueza","Carmen de Carupa","Chaguaní","Chía","Chipaque","Choachí","Chocontá","Cogua","Cota","Cucunubá","El Colegio","El Peñón","El Rosal","Facatativá","Fómeque","Fosca","Funza","Fúquene","Fusagasugá","Gachalá","Gachancipá","Gachetá","Gama","Girardot","Granada","Guachetá","Guaduas","Guasca","Guataquí","Guatavita","Guayabal de Síquima","Guayabetal","Gutiérrez","Jerusalén","Junín","La Calera","La Mesa","La Palma","La Peña","La Vega","Lenguazaque","Macheta","Madrid","Manta","Medina","Mosquera","Nariño","Nemocón","Nilo","Nimaima","Nocaima","Pacho","Paime","Pandi","Paratebueno","Pasca","Puerto Salgar","Pulí","Quebradanegra","Quetame","Quipile","Ricaurte","San Antonio del Tequendama","San Bernardo","San Cayetano","San Francisco","San Juan de Rioseco","Sasaima","Sesquilé","Sibaté","Silvania","Simijaca","Soacha","Sopó","Subachoque","Suesca","Supatá","Susa","Sutatausa","Tabio","Tausa","Tena","Tenjo","Tibacuy","Tibirita","Tocaima","Tocancipá","Topaipí","Ubalá","Ubaque","Ubaté","Une","Útica","Vergara","Vianí","Villa de San Diego de Ubaté","Villagómez","Villapinzón","Villeta","Viotá","Yacopí","Zipacón","Zipaquirá"],
+"Guainía":["Inírida","Barranco Minas","Cacahual","La Guadalupe","Mapiripana","Morichal","Pana Pana","Puerto Colombia","San Felipe"],
+"Guaviare":["San José del Guaviare","Calamar","El Retorno","Miraflores"],
+"Huila":["Neiva","Acevedo","Agrado","Aipe","Algeciras","Altamira","Baraya","Campoalegre","Colombia","Elías","Garzón","Gigante","Guadalupe","Hobo","Iquira","Isnos","La Argentina","La Plata","Nátaga","Oporapa","Paicol","Palermo","Palestina","Pital","Pitalito","Rivera","Saladoblanco","San Agustín","Santa María","Suaza","Tarqui","Tesalia","Tello","Teruel","Timaná","Villavieja","Yaguará"],
+"La Guajira":["Riohacha","Albania","Barrancas","Dibulla","Distracción","El Molino","Fonseca","Hatonuevo","La Jagua del Pilar","Maicao","Manaure","San Juan del Cesar","Uribia","Urumita","Villanueva"],
+"Magdalena":["Santa Marta","Algarrobo","Aracataca","Ariguaní","Cerro de San Antonio","Chibolo","Ciénaga","Concordia","El Banco","El Piñón","El Retén","Fundación","Guamal","Nueva Granada","Pedraza","Pijiño del Carmen","Pivijay","Plato","Puebloviejo","Remolino","Sabanas de San Ángel","Salamina","San Sebastián de Buenavista","San Zenón","Santa Ana","Santa Bárbara de Pinto","Sitionuevo","Tenerife","Zapayán","Zona Bananera"],
+"Meta":["Villavicencio","Acacías","Barranca de Upía","Cabuyaro","Castilla la Nueva","Cubarral","Cumaral","El Calvario","El Castillo","El Dorado","Fuente de Oro","Granada","Guamal","La Macarena","Lejanías","Mapiripán","Mesetas","La Uribe","Puerto Concordia","Puerto Gaitán","Puerto Lleras","Puerto López","Puerto Rico","Restrepo","San Carlos de Guaroa","San Juan de Arama","San Juanito","San Martín","Uribe","Vistahermosa"],
+"Nariño":["Pasto","Albán","Aldana","Ancuyá","Arboleda","Barbacoas","Belén","Buesaco","Colón","Consacá","Contadero","Córdoba","Cuaspud","Cumbal","Cumbitara","El Charco","El Peñol","El Rosario","El Tablón de Gómez","El Tambo","Francisco Pizarro","Funes","Guachucal","Guaitarilla","Gualmatán","Iles","Imués","Ipiales","La Cruz","La Florida","La Llanada","La Tola","La Unión","Leiva","Linares","Los Andes","Magüí","Mallama","Mosquera","Nariño","Olaya Herrera","Ospina","Policarpa","Potosí","Providencia","Puerres","Pupiales","Ricaurte","Roberto Payán","Samaniego","San Bernardo","San Lorenzo","San Pablo","San Pedro de Cartago","Sandoná","Santa Bárbara","Santacruz","Sapuyes","Taminango","Tangua","Tumaco","Túquerres","Yacuanquer"],
+"Norte de Santander":["Cúcuta","Ábrego","Arboledas","Bochalema","Bucarasica","Cachirá","Cácota","Chinácota","Chitagá","Convención","Cucutilla","Durania","El Carmen","El Tarra","El Zulia","Gramalote","Hacarí","Herrán","Labateca","La Esperanza","La Playa","Los Patios","Lourdes","Mutiscua","Ocaña","Pamplona","Pamplonita","Puerto Santander","Ragonvalia","Salazar","San Calixto","San Cayetano","Santiago","Sardinata","Silos","Teorama","Tibú","Toledo","Villa Caro","Villa del Rosario"],
+"Putumayo":["Mocoa","Colón","Orito","Puerto Asís","Puerto Caicedo","Puerto Guzmán","Leguízamo","San Francisco","San Miguel","Santiago","Sibundoy","Valle del Guamuez","Villagarzón"],
+"Quindío":["Armenia","Buenavista","Calarcá","Circasia","Córdoba","Filandia","Génova","La Tebaida","Montenegro","Pijao","Quimbaya","Salento"],
+"Risaralda":["Pereira","Apía","Balboa","Belén de Umbría","Dosquebradas","Guática","La Celia","La Virginia","Marsella","Mistrató","Pueblo Rico","Quinchía","Santa Rosa de Cabal","Santuario"],
+"San Andrés y Providencia":["San Andrés","Providencia"],
+"Santander":["Bucaramanga","Aguada","Albania","Aratoca","Barbosa","Barichara","Barrancabermeja","Betulia","Bolívar","Cabrera","California","Carcasí","Cepitá","Cerrito","Charalá","Charta","Chimá","Chipatá","Cimitarra","Concepción","Confines","Contratación","Coromoro","Curití","El Carmen de Chucurí","El Guacamayo","El Peñón","El Playón","Encino","Enciso","Florián","Floridablanca","Galán","Gámbita","Girón","Guaca","Guadalupe","Guapotá","Guavatá","Güepsa","Hato","Jesús María","Jordán","La Belleza","La Paz","Landázuri","Lebríja","Los Santos","Macaravita","Málaga","Matanza","Mogotes","Molagavita","Ocamonte","Oiba","Onzaga","Palmar","Palmas del Socorro","Páramo","Piedecuesta","Pinchote","Puente Nacional","Puerto Parra","Puerto Wilches","Rionegro","Sabana de Torres","San Andrés","San Benito","San Gil","San Joaquín","San José de Miranda","San Miguel","San Vicente de Chucurí","Santa Bárbara","Santa Helena del Opón","Simacota","Socorro","Suaita","Sucre","Suratá","Tona","Valle de San José","Vélez","Vetas","Villanueva","Zapatoca"],
+"Sucre":["Sincelejo","Buenavista","Caimito","Colosó","Corozal","Coveñas","Chalán","El Roble","Galeras","Guaranda","La Unión","Los Palmitos","Majagual","Morroa","Ovejas","Palmito","Sampués","San Benito Abad","San Juan de Betulia","San Marcos","San Onofre","San Pedro","San Luis de Sincé","Santiago de Tolú","Sucre","Tolúviejo"],
+"Tolima":["Ibagué","Alpujarra","Alvarado","Ambalema","Anzoátegui","Armero","Ataco","Cajamarca","Carmen de Apicalá","Casabianca","Chaparral","Coello","Coyaima","Cunday","Dolores","Espinal","Falan","Flandes","Fresno","Guamo","Herveo","Honda","Icononzo","Lérida","Líbano","Mariquita","Melgar","Murillo","Natagaima","Ortega","Palocabildo","Piedras","Planadas","Prado","Purificación","Rioblanco","Roncesvalles","Rovira","Sabandija","Saldaña","San Antonio","San Luis","Santa Isabel","Suárez","Valle de San Juan","Venadillo","Villahermosa","Villarrica"],
+"Valle del Cauca":["Cali","Alcalá","Andalucía","Ansermanuevo","Argelia","Bolívar","Buenaventura","Buga","Bugalagrande","Caicedonia","Calima","Candelaria","Cartago","Dagua","El Águila","El Cairo","El Cerrito","El Dovio","Florida","Ginebra","Guacarí","Jamundí","La Cumbre","La Unión","La Victoria","Obando","Palmira","Pradera","Restrepo","Riofrío","Roldanillo","San Pedro","Sevilla","Toro","Trujillo","Tuluá","Ulloa","Versalles","Vijes","Yotoco","Yumbo","Zarzal"],
+"Vaupés":["Mitú","Carurú","Pacoa","Papunaua","Taraira","Yavaraté"],
+"Vichada":["Puerto Carreño","Cumaribo","La Primavera","Santa Rosalía"]
 };
 
 let _ciudadesBloqueadas={}; // { "ciudad_dpto": true }
@@ -4679,6 +5086,390 @@ function toggleCiudadBloqueo(ciudad,dpto,bloqActual){
   }
   renderCiudadesModal();
   toast(bloqActual?`${ciudad} reactivada`:`${ciudad} bloqueada`);
+}
+
+// ════════════════════════════════════════
+//  PUBLICIDAD — visor del snapshot que escribe n8n
+// ════════════════════════════════════════
+// Contrato Firebase: titanbotas/publicidad/snapshot
+// {
+//   updatedAt: <ms timestamp>,
+//   rangos: {
+//     hoy:    { gastoTotal, mensajesTotal, ventaEntregada, ventaEnRuta,
+//               costoEntregado, costoEnRuta, vendedores:[...], modelos:[...] },
+//     semana: { ...mismo formato },
+//     mes:    { ...mismo formato }
+//   }
+// }
+// Cada vendedor: { nombre, campañaId, gasto, mensajes, ventaEntregada,
+//                  ventaEnRuta, costoEntregado, costoEnRuta, ctr, cpm, cpc,
+//                  presupuestoDiario, gastoHoy, antiguedadDias, estado }
+// Cada modelo:   { modelo, gasto, mensajes, paresVendidos, ventaEntregada,
+//                  ventaEnRuta, costoEntregado, costoEnRuta }
+//
+// Mientras n8n no escriba, mostramos el estado vacío con instrucción clara.
+
+let _publiSnap=null;
+let _publiHistorico=null; // { 'YYYY-MM-DD': {gastoTotal, vendedores, modelos, ...} }
+let _publiRango='hoy';
+let _publiFecha=''; // YYYY-MM-DD; cuando no está vacío sobrescribe el rango
+// URL del webhook de n8n que re-ejecuta el flujo de publicidad (Flujo A).
+// Producción: https://titan331.app.n8n.cloud/webhook/titan-publicidad-refresh
+const N8N_WEBHOOK_PUBLICIDAD='https://titan331.app.n8n.cloud/webhook/titan-publicidad-refresh';
+const KPI_UMBRALES={
+  ctrAlerta:0.8,   // <0.8% creativo no engancha
+  cpmMax:15000,    // CPM>15k es caro
+  cpcMax:1500,     // CPC>1500 es caro
+  presupuestoAlerta:0.8 // 80% del tope diario → amarillo
+};
+
+function setPubliRango(r){
+  _publiRango=r;
+  _publiFecha=''; // al cambiar de tab se limpia la fecha puntual
+  const fi=document.getElementById('publi-filtro-fecha'); if(fi) fi.value='';
+  ['hoy','semana','mes'].forEach(k=>{
+    const b=document.getElementById('publi-tab-'+k);
+    if(b) b.classList.toggle('active',k===r);
+  });
+  renderPublicidadCuerpo();
+}
+
+function setPubliFecha(f){
+  _publiFecha=f||'';
+  const fi=document.getElementById('publi-filtro-fecha');
+  if(fi && fi.value!==_publiFecha) fi.value=_publiFecha;
+  // Al elegir una fecha puntual, desactivamos visualmente los tabs.
+  ['hoy','semana','mes'].forEach(k=>{
+    const b=document.getElementById('publi-tab-'+k);
+    if(b) b.classList.toggle('active', !_publiFecha && k===_publiRango);
+  });
+  renderPublicidadCuerpo();
+}
+
+function getPubliDataActiva(){
+  // Devuelve { data, label } combinando rango y fecha puntual.
+  // La fecha puntual lee del histórico (titanbotas/publicidad/historico/FECHA),
+  // que n8n acumula un registro por día.
+  if(_publiFecha){
+    const hist=_publiHistorico||_publiSnap?.historico||{};
+    const d=hist[_publiFecha];
+    return { data: d||null, label: 'Día '+_publiFecha };
+  }
+  return { data: _publiSnap?.rangos?.[_publiRango]||null, label: _publiRango };
+}
+
+function renderPublicidad(){
+  // Si Firebase está activo, nos suscribimos una sola vez al snapshot y al histórico.
+  if(USE_FIREBASE && !window._publiSubscribed){
+    try{
+      db.ref('titanbotas/publicidad/snapshot').on('value', snap=>{
+        _publiSnap=snap.val()||null;
+        if(currentPage==='publicidad') renderPublicidadCuerpo();
+      });
+      db.ref('titanbotas/publicidad/historico').on('value', snap=>{
+        _publiHistorico=snap.val()||null;
+        if(currentPage==='publicidad') renderPublicidadCuerpo();
+      });
+      window._publiSubscribed=true;
+    }catch(e){console.warn('No se pudo suscribir a publicidad',e);}
+  }
+  renderPublicidadCuerpo();
+}
+
+// Dispara el flujo de n8n (Flujo A) que vuelve a leer Meta + Firebase y reescribe
+// el snapshot/histórico. El botón refrescar de la sección lo invoca.
+let _publiRefreshEnCurso=false;
+function dispararFlujoPublicidad(){
+  // Siempre re-render local primero (datos vigentes de Firebase).
+  renderPublicidadCuerpo();
+  if(!N8N_WEBHOOK_PUBLICIDAD){ toast('Configura N8N_WEBHOOK_PUBLICIDAD para disparar el flujo'); return; }
+  if(_publiRefreshEnCurso) return;
+  _publiRefreshEnCurso=true;
+  const sync=document.getElementById('publi-last-sync');
+  if(sync) sync.textContent='Ejecutando flujo de n8n… (Meta + Firebase)';
+  const url=N8N_WEBHOOK_PUBLICIDAD+(_publiFecha?('?fecha='+encodeURIComponent(_publiFecha)):'');
+  fetch(url,{method:'GET',mode:'cors'})
+    .then(r=>{
+      toast(r.ok?'Flujo de n8n disparado — los datos se actualizarán en unos segundos':'n8n respondió con error '+r.status);
+    })
+    .catch(e=>{
+      console.warn('Webhook n8n',e);
+      toast('No se pudo contactar n8n. Verifica que el flujo esté activo y el webhook publicado.');
+    })
+    .finally(()=>{ _publiRefreshEnCurso=false; });
+}
+
+function renderPublicidadCuerpo(){
+  const empty=document.getElementById('publi-empty');
+  const sync=document.getElementById('publi-last-sync');
+  const {data, label}=getPubliDataActiva();
+  if(!_publiSnap || !data){
+    if(empty) empty.style.display='block';
+    if(sync)  sync.textContent=_publiFecha
+      ? `Sin datos para ${_publiFecha} (n8n debe escribir en historico/${_publiFecha})`
+      : 'Esperando datos de n8n…';
+    // Vaciar tarjetas
+    ['publi-s-gasto','publi-s-msg','publi-s-util','publi-s-roas'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.textContent='—';
+    });
+    ['publi-s-gasto-sub','publi-s-msg-sub','publi-s-util-sub','publi-s-roas-sub'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.textContent='—';
+    });
+    const vt=document.getElementById('publi-vendedores'); if(vt) vt.innerHTML='';
+    const mv=document.getElementById('publi-modelos-vendedor'); if(mv) mv.innerHTML='';
+    const mt=document.getElementById('publi-modelos'); if(mt) mt.innerHTML='';
+    const aw=document.getElementById('publi-alertas-wrap'); if(aw){aw.style.display='none';aw.innerHTML='';}
+    return;
+  }
+  if(empty) empty.style.display='none';
+  if(sync){
+    const dt=new Date(_publiSnap.updatedAt||Date.now());
+    sync.textContent='Actualizado: '+dt.toLocaleString('es-CO');
+  }
+  // Tarjetas resumen
+  const gasto=data.gastoTotal||0;
+  const msg=data.mensajesTotal||0;
+  const ventaEnt=data.ventaEntregada||0;
+  const ventaRuta=data.ventaEnRuta||0;
+  const costoEnt=data.costoEntregado||0;
+  const costoRuta=data.costoEnRuta||0;
+  const utilEnt=ventaEnt-costoEnt-gasto;
+  const utilRuta=ventaRuta-costoRuta; // gasto ya descontado en utilEnt
+  const roasEnt=gasto>0?(ventaEnt/gasto):0;
+  const roasRuta=gasto>0?(ventaRuta/gasto):0;
+  const cpc=msg>0?(gasto/msg):0;
+  document.getElementById('publi-s-gasto').textContent=fmtM(gasto);
+  document.getElementById('publi-s-msg').textContent=fmtN(msg);
+  document.getElementById('publi-s-msg-sub').textContent='$/conversación: '+(cpc?fmtM(Math.round(cpc)):'—');
+  document.getElementById('publi-s-util').textContent=fmtM(utilEnt);
+  document.getElementById('publi-s-util').className='stat-value '+(utilEnt>=0?'text-success':'text-danger');
+  document.getElementById('publi-s-util-sub').textContent='En ruta: '+fmtM(utilRuta);
+  document.getElementById('publi-s-roas').textContent=roasEnt?roasEnt.toFixed(2)+'x':'—';
+  document.getElementById('publi-s-roas').className='stat-value '+(roasEnt>=2?'text-success':roasEnt>=1?'text-warning':'text-danger');
+  document.getElementById('publi-s-roas-sub').textContent='En ruta: '+(roasRuta?roasRuta.toFixed(2)+'x':'—');
+
+  renderPubliVendedores(data.vendedores||[]);
+  renderPubliModelosPorVendedor(data);
+  renderPubliModelos(data.modelos||[]);
+  renderPubliAlertas(data.vendedores||[]);
+}
+
+function pubBadgeKPI(label,val,bueno,malo,fmt){
+  // bueno/malo: funciones (val)=>bool. Verde si bueno, rojo si malo, amarillo si nada.
+  const txt=fmt?fmt(val):val;
+  let cls='badge-gray';
+  if(bueno(val)) cls='badge-success';
+  else if(malo(val)) cls='badge-danger';
+  else cls='badge-warning';
+  return `<span class="badge ${cls}" title="${label}">${txt}</span>`;
+}
+
+function renderPubliVendedores(rows){
+  const el=document.getElementById('publi-vendedores');
+  if(!rows.length){ el.innerHTML='<div class="empty"><h3>Sin datos de vendedores</h3></div>'; return; }
+  // Ordenar por gasto descendente
+  rows=[...rows].sort((a,b)=>(b.gasto||0)-(a.gasto||0));
+  let html=`<table><thead><tr>
+    <th>Vendedor</th><th>Estado</th><th>Antig.</th><th>Gasto</th><th>Presup.</th>
+    <th>Mensajes</th><th>$/conv</th><th>CTR</th><th>CPM</th><th>CPC</th>
+    <th>Venta entreg.</th><th>Venta en ruta</th><th>Utilidad</th><th>ROAS entreg.</th>
+  </tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const gasto=r.gasto||0, msg=r.mensajes||0;
+    const ventaEnt=r.ventaEntregada||0, ventaRuta=r.ventaEnRuta||0;
+    const costoEnt=r.costoEntregado||0;
+    const util=ventaEnt-costoEnt-gasto;
+    const roas=gasto>0?(ventaEnt/gasto):0;
+    const cpconv=msg>0?(gasto/msg):0;
+    // Presupuesto: si tenemos diario y gastoHoy, calculamos %
+    let presupBadge='—';
+    if(r.presupuestoDiario && r.gastoHoy!=null){
+      const pct=r.gastoHoy/r.presupuestoDiario;
+      const cls=pct>=0.95?'badge-danger':pct>=KPI_UMBRALES.presupuestoAlerta?'badge-warning':'badge-success';
+      presupBadge=`<span class="badge ${cls}">${Math.round(pct*100)}%</span>`;
+    }
+    const estado=(r.estado||'').toUpperCase()==='ACTIVE'
+      ? '<span class="badge badge-success">Activa</span>'
+      : '<span class="badge badge-gray">Pausada</span>';
+    const ctr=r.ctr||0, cpm=r.cpm||0, cpc=r.cpc||0;
+    html+=`<tr>
+      <td><strong>${r.nombre||'—'}</strong></td>
+      <td>${estado}</td>
+      <td style="font-size:12px;color:var(--muted)">${r.antiguedadDias!=null?r.antiguedadDias+' d':'—'}</td>
+      <td style="white-space:nowrap">${fmtM(gasto)}</td>
+      <td>${presupBadge}</td>
+      <td>${fmtN(msg)}</td>
+      <td>${cpconv?fmtM(Math.round(cpconv)):'—'}</td>
+      <td>${pubBadgeKPI('CTR',ctr,v=>v>=1.2,v=>v>0&&v<KPI_UMBRALES.ctrAlerta,v=>v.toFixed(2)+'%')}</td>
+      <td>${pubBadgeKPI('CPM',cpm,v=>v>0&&v<=KPI_UMBRALES.cpmMax,v=>v>KPI_UMBRALES.cpmMax,v=>v?fmtM(Math.round(v)):'—')}</td>
+      <td>${pubBadgeKPI('CPC',cpc,v=>v>0&&v<=KPI_UMBRALES.cpcMax,v=>v>KPI_UMBRALES.cpcMax,v=>v?fmtM(Math.round(v)):'—')}</td>
+      <td style="white-space:nowrap">${fmtM(ventaEnt)}</td>
+      <td style="white-space:nowrap;color:var(--muted)">${fmtM(ventaRuta)}</td>
+      <td style="white-space:nowrap" class="${util>=0?'text-success':'text-danger'}"><strong>${fmtM(util)}</strong></td>
+      <td><strong class="${roas>=2?'text-success':roas>=1?'text-warning':'text-danger'}">${roas?roas.toFixed(2)+'x':'—'}</strong></td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+// Normaliza el nombre de un modelo: quita color y sufijos comunes para que
+// "Bota Classic Negro" y "Bota Classic Café" caigan en el mismo grupo.
+function publiNormalizaModelo(nombre){
+  if(!nombre) return '—';
+  // Coloca el separador conocido (" - color", " / color", " — color") y devuelve
+  // solo la parte previa. Si no hay separador, quita palabras-color al final.
+  let s=String(nombre).trim();
+  s=s.replace(/\s*[-–—\/|·]\s*[^-–—\/|·]+$/,''); // quita " - Café", " / Marrón", etc.
+  const colores=['negro','negra','blanco','blanca','café','cafe','marrón','marron','azul','rojo','roja','verde','gris','beige','camel','tan','amarillo','dorado','plateado','rosa','fucsia','violeta','morado','vino','cuero','miel','arena','cobre','ocre','crema','natural','chocolate','habano','tabaco','nogal'];
+  const re=new RegExp('\\s+('+colores.join('|')+')$','i');
+  s=s.replace(re,'');
+  return s.trim()||nombre.trim();
+}
+
+function renderPubliModelos(rows){
+  const el=document.getElementById('publi-modelos');
+  if(!rows.length){ el.innerHTML='<div class="empty"><h3>Sin datos por modelo</h3><p style="font-size:11px;color:var(--muted);margin-top:4px">n8n calcula esto agrupando conjuntos de anuncios por el diccionario de modelos.</p></div>'; return; }
+  // Agrupamos por modelo normalizado (sin color)
+  const grupos={};
+  rows.forEach(r=>{
+    const k=publiNormalizaModelo(r.modelo);
+    if(!grupos[k]) grupos[k]={modelo:k, gasto:0, mensajes:0, paresVendidos:0, ventaEntregada:0, ventaEnRuta:0, costoEntregado:0, costoEnRuta:0};
+    grupos[k].gasto += r.gasto||0;
+    grupos[k].mensajes += r.mensajes||0;
+    grupos[k].paresVendidos += r.paresVendidos||0;
+    grupos[k].ventaEntregada += r.ventaEntregada||0;
+    grupos[k].ventaEnRuta += r.ventaEnRuta||0;
+    grupos[k].costoEntregado += r.costoEntregado||0;
+    grupos[k].costoEnRuta += r.costoEnRuta||0;
+  });
+  let rowsAgg=Object.values(grupos).sort((a,b)=>{
+    const ua=(a.ventaEntregada||0)-(a.costoEntregado||0)-(a.gasto||0);
+    const ub=(b.ventaEntregada||0)-(b.costoEntregado||0)-(b.gasto||0);
+    return ub-ua;
+  });
+  let html=`<table><thead><tr>
+    <th>Modelo</th><th>Gasto</th><th>Mensajes</th><th>Pares</th>
+    <th>Venta entreg.</th><th>Venta en ruta</th><th>Utilidad</th><th>ROAS entreg.</th>
+  </tr></thead><tbody>`;
+  rowsAgg.forEach(r=>{
+    const gasto=r.gasto||0;
+    const ventaEnt=r.ventaEntregada||0, ventaRuta=r.ventaEnRuta||0;
+    const costoEnt=r.costoEntregado||0;
+    const util=ventaEnt-costoEnt-gasto;
+    const roas=gasto>0?(ventaEnt/gasto):0;
+    html+=`<tr>
+      <td><strong>${r.modelo||'—'}</strong></td>
+      <td style="white-space:nowrap">${fmtM(gasto)}</td>
+      <td>${fmtN(r.mensajes||0)}</td>
+      <td>${fmtN(r.paresVendidos||0)}</td>
+      <td style="white-space:nowrap">${fmtM(ventaEnt)}</td>
+      <td style="white-space:nowrap;color:var(--muted)">${fmtM(ventaRuta)}</td>
+      <td style="white-space:nowrap" class="${util>=0?'text-success':'text-danger'}"><strong>${fmtM(util)}</strong></td>
+      <td><strong class="${roas>=2?'text-success':roas>=1?'text-warning':'text-danger'}">${roas?roas.toFixed(2)+'x':'—'}</strong></td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+// Tabla "modelos publicados por vendedor — activos". Lee los items de:
+//   1) data.vendedorModelos[]  → {vendedor, modelo, presupuestoDiario, gastoHoy, estado}
+//   2) Si no existe, intenta data.vendedores[].modelosActivos[]  → {modelo, presupuestoDiario, gastoHoy, estado}
+// Solo cuenta filas con estado ACTIVE (las pausadas/ancladas se excluyen).
+function renderPubliModelosPorVendedor(data){
+  const el=document.getElementById('publi-modelos-vendedor');
+  if(!el) return;
+  let filas=[];
+  if(Array.isArray(data.vendedorModelos)){
+    filas=data.vendedorModelos.slice();
+  } else if(Array.isArray(data.vendedores)){
+    data.vendedores.forEach(v=>{
+      if(Array.isArray(v.modelosActivos)){
+        v.modelosActivos.forEach(m=>{
+          filas.push({
+            vendedor: v.nombre, modelo: m.modelo,
+            presupuestoDiario: m.presupuestoDiario, gastoHoy: m.gastoHoy,
+            estado: m.estado || v.estado
+          });
+        });
+      }
+    });
+  }
+  // Solo activos
+  filas=filas.filter(f=>String(f.estado||'').toUpperCase()==='ACTIVE');
+  if(!filas.length){
+    el.innerHTML=`<div class="empty"><h3>Sin anuncios activos</h3><p style="font-size:11px;color:var(--muted);margin-top:4px">n8n debe escribir <code>vendedorModelos[]</code> o <code>vendedores[].modelosActivos[]</code> con sólo las publicidades en estado ACTIVE.</p></div>`;
+    return;
+  }
+  // Agrupar por modelo normalizado, con sub-filas por vendedor
+  const grupos={};
+  filas.forEach(f=>{
+    const k=publiNormalizaModelo(f.modelo);
+    if(!grupos[k]) grupos[k]={modelo:k, presupTotal:0, gastoTotal:0, vendedores:[]};
+    grupos[k].presupTotal += f.presupuestoDiario||0;
+    grupos[k].gastoTotal  += f.gastoHoy||0;
+    grupos[k].vendedores.push({nombre:f.vendedor||'—', presup:f.presupuestoDiario||0, gasto:f.gastoHoy||0});
+  });
+  const ordenados=Object.values(grupos).sort((a,b)=>(b.presupTotal||0)-(a.presupTotal||0));
+  let html=`<table><thead><tr>
+    <th>Modelo</th><th>Vendedores activos</th><th># Vendedores</th>
+    <th>Presup. activo (día)</th><th>Gastado hoy</th>
+  </tr></thead><tbody>`;
+  ordenados.forEach(g=>{
+    const vendList=g.vendedores
+      .sort((a,b)=>b.presup-a.presup)
+      .map(v=>`<div style="font-size:12px;line-height:1.4"><strong>${v.nombre}</strong> · <span style="color:var(--muted)">${fmtM(v.presup)}/día · gastó ${fmtM(v.gasto)}</span></div>`)
+      .join('');
+    html+=`<tr>
+      <td><strong>${g.modelo}</strong></td>
+      <td>${vendList}</td>
+      <td>${fmtN(g.vendedores.length)}</td>
+      <td style="white-space:nowrap"><strong>${fmtM(g.presupTotal)}</strong></td>
+      <td style="white-space:nowrap;color:var(--muted)">${fmtM(g.gastoTotal)}</td>
+    </tr>`;
+  });
+  // Fila de total
+  const totPresup=ordenados.reduce((s,g)=>s+g.presupTotal,0);
+  const totGasto=ordenados.reduce((s,g)=>s+g.gastoTotal,0);
+  html+=`<tr style="background:#f8fafc;font-weight:700">
+    <td colspan="3" style="text-align:right">Total activo</td>
+    <td style="white-space:nowrap">${fmtM(totPresup)}</td>
+    <td style="white-space:nowrap;color:var(--muted)">${fmtM(totGasto)}</td>
+  </tr>`;
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+function renderPubliAlertas(rows){
+  const wrap=document.getElementById('publi-alertas-wrap');
+  if(!wrap) return;
+  const alertas=[];
+  rows.forEach(r=>{
+    if(r.presupuestoDiario && r.gastoHoy!=null){
+      const pct=r.gastoHoy/r.presupuestoDiario;
+      if(pct>=KPI_UMBRALES.presupuestoAlerta){
+        const grave=pct>=0.95;
+        alertas.push({tipo:grave?'danger':'warning',texto:`<strong>${r.nombre}</strong> consumió ${Math.round(pct*100)}% del presupuesto diario (${fmtM(r.gastoHoy)} de ${fmtM(r.presupuestoDiario)})`});
+      }
+    }
+    if((r.ctr||0)>0 && r.ctr<KPI_UMBRALES.ctrAlerta){
+      alertas.push({tipo:'warning',texto:`<strong>${r.nombre}</strong>: CTR en ${r.ctr.toFixed(2)}% — creativo no engancha`});
+    }
+    if((r.cpc||0)>KPI_UMBRALES.cpcMax){
+      alertas.push({tipo:'warning',texto:`<strong>${r.nombre}</strong>: CPC ${fmtM(Math.round(r.cpc))} — sobre el umbral`});
+    }
+  });
+  if(!alertas.length){ wrap.style.display='none'; wrap.innerHTML=''; return; }
+  wrap.style.display='block';
+  const badgeNum=document.getElementById('badge-publi');
+  if(badgeNum){ badgeNum.textContent=alertas.length; badgeNum.style.display='inline-block'; }
+  wrap.innerHTML=alertas.map(a=>{
+    const bg=a.tipo==='danger'?'#fee2e2':'#fef3c7';
+    const bd=a.tipo==='danger'?'#ef4444':'#f59e0b';
+    const ic=a.tipo==='danger'?'bi-exclamation-octagon-fill':'bi-exclamation-triangle-fill';
+    return `<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px"><i class="bi ${ic}" style="color:${bd}"></i> ${a.texto}</div>`;
+  }).join('');
 }
 
 // ════════════════════════════════════════
