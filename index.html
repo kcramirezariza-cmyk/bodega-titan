@@ -9,7 +9,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <!-- Firebase compat (no requiere npm ni build) -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
@@ -55,11 +54,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .app-wrap{display:flex;min-height:100vh}
 
 /* ── SIDEBAR ── */
-.sidebar{width:var(--sidebar-w);background:#1e1b4b;height:100vh;position:fixed;top:0;left:0;display:flex;flex-direction:column;z-index:100;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
-.sidebar::-webkit-scrollbar{width:6px}
-.sidebar::-webkit-scrollbar-track{background:transparent}
-.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
-.sidebar::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3)}
+.sidebar{width:var(--sidebar-w);background:#1e1b4b;min-height:100vh;position:fixed;top:0;left:0;display:flex;flex-direction:column;z-index:100;overflow-y:auto}
 .sidebar-logo{padding:20px 18px;border-bottom:1px solid rgba(255,255,255,.08)}
 .sidebar-logo .brand-icon{font-size:22px;margin-bottom:3px}
 .sidebar-logo h1{font-size:16px;font-weight:800;color:#fff}
@@ -347,7 +342,7 @@ textarea{resize:vertical}
   </div>
   <nav class="sidebar-nav">
     <div class="nav-item active" onclick="navigate('dashboard')"><span class="nav-icon"><i class="bi bi-speedometer2"></i></span>Dashboard</div>
-    <div class="nav-item" onclick="navigate('productos')"><span class="nav-icon"><i class="bi bi-grid-fill"></i></span>Productos</div>
+    <div class="nav-item" onclick="navigate('productos')" data-admin><span class="nav-icon"><i class="bi bi-grid-fill"></i></span>Productos</div>
     <div class="nav-label" data-vendor>Pedidos</div>
     <div class="nav-item" onclick="navigate('nuevo-pedido')" data-vendor><span class="nav-icon"><i class="bi bi-cart-plus-fill"></i></span>Nuevo Pedido</div>
     <div class="nav-item" onclick="navigate('mis-pedidos')" data-vendor>
@@ -479,13 +474,13 @@ textarea{resize:vertical}
         <div class="section-title">Catálogo de Productos</div>
         <div class="flex gap-8" style="flex-wrap:wrap">
           <div class="search-wrap"><i class="bi bi-search"></i><input type="text" placeholder="Buscar producto..." id="search-prod" oninput="renderProductos()"></div>
-          <select id="filter-prod-bodega" onchange="renderProductos()" data-admin style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
+          <select id="filter-prod-bodega" onchange="renderProductos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
             <option value="">Todas las bodegas</option>
           </select>
           <select id="filter-prod-depto" onchange="renderProductos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
             <option value="">Todos los departamentos</option>
           </select>
-          <button class="btn btn-primary" onclick="abrirModalProducto()" data-admin><i class="bi bi-plus-lg"></i> Nuevo Producto</button>
+          <button class="btn btn-primary" onclick="abrirModalProducto()"><i class="bi bi-plus-lg"></i> Nuevo Producto</button>
         </div>
       </div>
       <div class="card"><div class="table-wrap" id="tabla-productos"></div></div>
@@ -647,6 +642,7 @@ textarea{resize:vertical}
                   <button type="button" class="btn btn-outline btn-sm tventa-btn active" onclick="setTipoVenta('individual',this)">Individual</button>
                   <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('combo',this)">Combo (2)</button>
                   <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('trio',this)">Trío (3)</button>
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('cambio',this)">Cambio</button>
                 </div>
                 <div id="tipo-venta-hint" style="font-size:11px;color:var(--muted);margin-top:6px;display:none"></div>
               </div>
@@ -874,10 +870,12 @@ textarea{resize:vertical}
             <option value="semana">Esta semana</option>
             <option value="mes">Este mes</option>
           </select>
-          <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:4px 8px">
-            <i class="bi bi-calendar-event" style="color:var(--primary)"></i>
-            <input type="date" id="filter-admin-fecha-dia" onchange="onFiltroFechaDiaChange()" style="border:none;background:transparent;font-size:13px;padding:3px 4px;width:140px" title="Filtrar por día específico">
-            <button class="btn-icon" onclick="limpiarFiltroFechaDia()" title="Limpiar fecha" style="padding:2px 4px"><i class="bi bi-x-lg" style="font-size:11px"></i></button>
+          <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:4px 8px" title="Filtrar por rango de fechas (fecha de la guía)">
+            <i class="bi bi-calendar-range" style="color:var(--primary)"></i>
+            <input type="date" id="filter-admin-fecha-desde" onchange="onFiltroFechaRangoChange()" style="border:none;background:transparent;font-size:13px;padding:3px 4px;width:130px" title="Desde">
+            <span style="color:var(--muted);font-size:12px">→</span>
+            <input type="date" id="filter-admin-fecha-hasta" onchange="onFiltroFechaRangoChange()" style="border:none;background:transparent;font-size:13px;padding:3px 4px;width:130px" title="Hasta">
+            <button class="btn-icon" onclick="limpiarFiltroFechaRango()" title="Limpiar rango" style="padding:2px 4px"><i class="bi bi-x-lg" style="font-size:11px"></i></button>
           </div>
           <button class="btn btn-success btn-sm" onclick="exportarGuiasMasivas()" id="btn-guias-masivas" style="display:none"><i class="bi bi-file-earmark-spreadsheet-fill"></i> Excel guías masivas</button>
         </div>
@@ -1061,10 +1059,6 @@ textarea{resize:vertical}
         <option value="admin">Administrador — Acceso completo</option>
       </select>
     </div>
-    <div class="form-group" id="u-publi-grp"><label>Nombre en publicidad <span style="font-weight:400;color:var(--muted);font-size:11px">(opcional — solo para vendedores)</span></label>
-      <input type="text" id="u-nombre-publi" placeholder="Ej: DEICY 24-03  (déjalo vacío si quieres match automático por primera palabra)">
-      <div style="font-size:11px;color:var(--muted);margin-top:4px"><i class="bi bi-info-circle"></i> Debe coincidir EXACTAMENTE con el campo "nombre" de la campaña en Meta. Si tienes vendedores con primer nombre repetido, llena esto para evitar que se mezclen datos en el reporte.</div>
-    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="cerrarModal('modal-usuario')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarUsuario()">Guardar Usuario</button>
@@ -1082,7 +1076,7 @@ textarea{resize:vertical}
     <div class="table-wrap" id="mv-table"></div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="cerrarModal('modal-variantes')">Cerrar</button>
-      <button class="btn btn-primary" id="mv-edit-btn" data-admin><i class="bi bi-pencil-fill"></i> Editar</button>
+      <button class="btn btn-primary" id="mv-edit-btn"><i class="bi bi-pencil-fill"></i> Editar</button>
     </div>
   </div>
 </div>
@@ -1717,8 +1711,8 @@ const PAGE_TITLES={dashboard:'Dashboard',productos:'Productos',entrada:'Entrada 
 
 function navigate(page) {
   closeSidebar();
-  const adminPages=['importar','historial','reportes','alertas','usuarios','admin-pedidos','guias','entrada','salida','publicidad'];
-  const vendorPages=['nuevo-pedido','mis-pedidos','productos']; // productos = solo lectura para vendedores
+  const adminPages=['productos','importar','historial','reportes','alertas','usuarios','admin-pedidos','guias','entrada','salida','publicidad'];
+  const vendorPages=['nuevo-pedido','mis-pedidos'];
   if (!isAdmin() && adminPages.includes(page)) return;
   if (!isAdmin() && !isVendedor() && vendorPages.includes(page)) return;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -2032,10 +2026,6 @@ function renderProductos() {
     const ts=p.variantes.reduce((s,v)=>s+(v.stockActual||0),0);
     const vc=p.variantes.reduce((s,v)=>s+(v.stockActual||0)*(v.precioCosto||0),0);
     const vv=p.variantes.reduce((s,v)=>s+(v.stockActual||0)*(v.precio||0),0);
-    // Precio unitario: rango entre todas las variantes con precio
-    const preciosUnit = p.variantes.map(v=>v.precio||0).filter(x=>x>0);
-    const pvMin = preciosUnit.length ? Math.min(...preciosUnit) : 0;
-    const pvMax = preciosUnit.length ? Math.max(...preciosUnit) : 0;
     const zero=p.variantes.filter(v=>(v.stockActual||0)===0).length;
     const low=p.variantes.filter(v=>(v.stockActual||0)<=(v.stockMinimo||0)).length;
     // estado: 0=sin stock, 1=bajo, 2=ok
@@ -2045,7 +2035,7 @@ function renderProductos() {
     // última venta
     const movsP=getMovs().filter(m=>m.tipo==='salida'&&m.productoId===p.id);
     const ultVenta=movsP.length?movsP.reduce((a,b)=>a.ts>b.ts?a:b,movsP[0]):null;
-    return{p,ts,vc,vv,pvMin,pvMax,estado,ventas7,ultVenta};
+    return{p,ts,vc,vv,estado,ventas7,ultVenta};
   });
   // Aplicar sorting
   if(prodSort.col){
@@ -2060,19 +2050,19 @@ function renderProductos() {
     });
   }
   const wrap=document.getElementById('tabla-productos');
-  if(!withMeta.length){wrap.innerHTML=`<div class="empty"><div class="empty-icon"><i class="bi bi-box-seam" style="font-size:38px;color:var(--muted)"></i></div><h3>${q?'Sin resultados':'No hay productos'}</h3>${(!q&&isAdmin())?'<br><button class="btn btn-primary" onclick="abrirModalProducto()"><i class="bi bi-plus-lg"></i> Nuevo Producto</button>':''}</div>`;return;}
-  const _esAdmin = isAdmin();
+  if(!withMeta.length){wrap.innerHTML=`<div class="empty"><div class="empty-icon"><i class="bi bi-box-seam" style="font-size:38px;color:var(--muted)"></i></div><h3>${q?'Sin resultados':'No hay productos'}</h3>${!q?'<br><button class="btn btn-primary" onclick="abrirModalProducto()"><i class="bi bi-plus-lg"></i> Nuevo Producto</button>':''}</div>`;return;}
   const thStyle='cursor:pointer;user-select:none;white-space:nowrap';
   // Total ventas 7 días para calcular porcentajes
   const totalVentas7=withMeta.reduce((s,m)=>s+m.ventas7,0);
   let html=`<table><thead><tr>
-    <th style="width:52px">Foto</th><th>Producto</th>${_esAdmin?'<th>Categoría</th><th>Variantes</th>':''}
+    <th style="width:52px">Foto</th><th>Producto</th><th>Categoría</th><th>Variantes</th>
     <th style="${thStyle}" onclick="sortProds('stock')">Stock${sortIcon('stock')}</th>
-    ${_esAdmin?`<th style="${thStyle}" onclick="sortProds('costo')">V.Costo${sortIcon('costo')}</th>`:''}
-    <th style="${thStyle}" onclick="sortProds('venta')">P.Venta${sortIcon('venta')}</th>
-    ${_esAdmin?`<th>Ventas 7d</th><th style="${thStyle}" onclick="sortProds('estado')">Estado${sortIcon('estado')}</th>`:''}
+    <th style="${thStyle}" onclick="sortProds('costo')">V.Costo${sortIcon('costo')}</th>
+    <th style="${thStyle}" onclick="sortProds('venta')">V.Venta${sortIcon('venta')}</th>
+    <th>Ventas 7d</th>
+    <th style="${thStyle}" onclick="sortProds('estado')">Estado${sortIcon('estado')}</th>
     <th>Acciones</th></tr></thead><tbody>`;
-  withMeta.forEach(({p,ts,vc,vv,pvMin,pvMax,estado,ventas7,ultVenta})=>{
+  withMeta.forEach(({p,ts,vc,vv,estado,ventas7,ultVenta})=>{
     const low=p.variantes.filter(v=>(v.stockActual||0)<=(v.stockMinimo||0)).length;
     const zero=p.variantes.filter(v=>(v.stockActual||0)===0).length;
     const badge=zero===p.variantes.length?`<span class="badge badge-danger">Sin stock</span>`:low>0?`<span class="badge badge-warning">Stock bajo</span>`:`<span class="badge badge-success">OK</span>`;
@@ -2084,24 +2074,20 @@ function renderProductos() {
       <div style="font-size:10px;color:var(--muted);margin-top:2px">${ultVenta?'Últ: '+fmtD(ultVenta.fecha):'Sin ventas'}</div>
     </div>`;
     const fotoPortada=p.foto||(p.variantes.find(v=>v.foto)?.foto)||'';
-    const fotoCell = fotoPortada
-      ? (_esAdmin
-          ? `<div class="photo-cell photo-quick" title="Click: ampliar · Botón ✎: cambiar"><img src="${fotoPortada}" alt="${p.nombre}" onclick="abrirLightbox('${p.id}','main')"><button class="photo-edit-btn" onclick="event.stopPropagation();subirFotoProductoQuick('${p.id}')" title="Cambiar foto"><i class="bi bi-pencil-fill"></i></button></div>`
-          : `<div class="photo-cell photo-quick" title="Click: ampliar"><img src="${fotoPortada}" alt="${p.nombre}" onclick="abrirLightbox('${p.id}','main')"></div>`)
-      : (_esAdmin
-          ? `<div class="photo-cell photo-quick"><div class="no-photo upload-now" onclick="subirFotoProductoQuick('${p.id}')" title="Subir foto"><i class="bi bi-camera-fill"></i><span>Subir</span></div></div>`
-          : `<div class="photo-cell photo-quick"><div class="no-photo"><i class="bi bi-image" style="color:#cbd5e1"></i></div></div>`);
+    const fotoCell=fotoPortada
+      ? `<div class="photo-cell photo-quick" title="Click: ampliar · Botón ✎: cambiar"><img src="${fotoPortada}" alt="${p.nombre}" onclick="abrirLightbox('${p.id}','main')"><button class="photo-edit-btn" onclick="event.stopPropagation();subirFotoProductoQuick('${p.id}')" title="Cambiar foto"><i class="bi bi-pencil-fill"></i></button></div>`
+      : `<div class="photo-cell photo-quick"><div class="no-photo upload-now" onclick="subirFotoProductoQuick('${p.id}')" title="Subir foto"><i class="bi bi-camera-fill"></i><span>Subir</span></div></div>`;
     html+=`<tr><td>${fotoCell}</td><td><div style="font-weight:600">${p.nombre}</div>${p.bodega||p.departamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${[p.bodega,p.departamento].filter(Boolean).join(' · ')}</div>`:''} ${p.descripcion?`<div style="font-size:11px;color:var(--muted)">${p.descripcion}</div>`:''}</td>
-      ${_esAdmin?`<td>${p.categoria?`<span class="badge badge-purple">${p.categoria}</span>`:'—'}</td>
-      <td><div style="font-size:11px;color:var(--muted);margin-bottom:4px">${p.variantes.length} var.</div><div style="display:flex;gap:3px;flex-wrap:wrap">${bars}</div></td>`:''}
+      <td>${p.categoria?`<span class="badge badge-purple">${p.categoria}</span>`:'—'}</td>
+      <td><div style="font-size:11px;color:var(--muted);margin-bottom:4px">${p.variantes.length} var.</div><div style="display:flex;gap:3px;flex-wrap:wrap">${bars}</div></td>
       <td><strong>${fmtN(ts)}</strong> <span style="font-size:11px;color:var(--muted)">uds</span></td>
-      ${_esAdmin?`<td style="font-size:12px">${fmtM(vc)}</td>`:''}<td style="font-size:12px">${pvMin>0?(pvMin===pvMax?fmtM(pvMin):fmtM(pvMin)+' – '+fmtM(pvMax)):'—'}</td>
-      ${_esAdmin?`<td style="min-width:120px">${salesBarHtml}</td>
-      <td>${badge}</td>`:''}
+      <td style="font-size:12px">${fmtM(vc)}</td><td style="font-size:12px">${fmtM(vv)}</td>
+      <td style="min-width:120px">${salesBarHtml}</td>
+      <td>${badge}</td>
       <td><div style="display:flex;gap:3px">
         <button class="btn-icon" onclick="verVariantes('${p.id}')" title="Ver variantes"><i class="bi bi-eye-fill"></i></button>
-        ${_esAdmin?`<button class="btn-icon" onclick="editarProducto('${p.id}')" title="Editar"><i class="bi bi-pencil-fill"></i></button>
-        <button class="btn-icon" style="color:var(--danger)" onclick="pedirEliminarProd('${p.id}')" title="Eliminar"><i class="bi bi-trash-fill"></i></button>`:''}
+        <!-- Edición de productos inhabilitada de momento -->
+        <button class="btn-icon" style="color:var(--danger)" onclick="pedirEliminarProd('${p.id}')" title="Eliminar"><i class="bi bi-trash-fill"></i></button>
       </div></td></tr>`;
   });
   wrap.innerHTML=html+'</tbody></table>';
@@ -2219,14 +2205,14 @@ function verVariantes(id) {
   document.getElementById('mv-title').textContent=p.nombre;
   document.getElementById('mv-sub').textContent=(p.proveedor?'Prov: '+p.proveedor+' · ':'')+p.variantes.length+' variante(s)';
   const portadaHtml=p.foto?`<div style="display:flex;justify-content:center;margin-bottom:14px"><img src="${p.foto}" alt="Portada" style="max-width:240px;max-height:240px;border-radius:10px;border:1px solid var(--border);cursor:zoom-in" onclick="abrirLightboxSrc('${p.foto.replace(/'/g,"\\'")}')"></div>`:'';
-  const _esAdmin = isAdmin();
   const varRows=p.variantes.map((v,idx)=>{
     const fotoCell=v.foto?`<img src="${v.foto}" alt="" style="width:42px;height:42px;border-radius:6px;object-fit:cover;cursor:pointer;border:1px solid var(--border)" onclick="abrirLightboxSrc('${v.foto.replace(/'/g,"\\'")}')">`:`<div style="width:42px;height:42px;border-radius:6px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#cbd5e1"><i class="bi bi-image"></i></div>`;
-    const estadoCell = v.stockActual===0?'<span class="badge badge-danger">Sin stock</span>':v.stockActual<=v.stockMinimo?'<span class="badge badge-warning">Bajo</span>':'<span class="badge badge-success">OK</span>';
-    return `<tr>${_esAdmin?`<td>${fotoCell}</td>`:''}<td>${v.talla||'—'}</td><td>${v.color||'—'}</td>${_esAdmin?`<td style="font-family:monospace;font-size:11px">${v.sku||'—'}</td>`:''}<td><strong>${v.stockActual}</strong></td>${_esAdmin?`<td>${v.stockMinimo}</td>`:''}${_esAdmin?`<td>${v.precioCosto?fmtM(v.precioCosto):'—'}</td>`:''}<td>${v.precio?fmtM(v.precio):'—'}</td>${_esAdmin?`<td>${estadoCell}</td>`:''}</tr>`;
+    return `<tr><td>${fotoCell}</td><td>${v.talla||'—'}</td><td>${v.color||'—'}</td><td style="font-family:monospace;font-size:11px">${v.sku||'—'}</td><td><strong>${v.stockActual}</strong></td><td>${v.stockMinimo}</td><td>${v.precioCosto?fmtM(v.precioCosto):'—'}</td><td>${v.precio?fmtM(v.precio):'—'}</td><td>${v.stockActual===0?'<span class="badge badge-danger">Sin stock</span>':v.stockActual<=v.stockMinimo?'<span class="badge badge-warning">Bajo</span>':'<span class="badge badge-success">OK</span>'}</td></tr>`;
   }).join('');
-  document.getElementById('mv-table').innerHTML=portadaHtml+`<table><thead><tr>${_esAdmin?'<th>Foto</th>':''}<th>Talla</th><th>Color</th>${_esAdmin?'<th>SKU</th>':''}<th>Stock</th>${_esAdmin?'<th>Mínimo</th>':''}${_esAdmin?'<th>P.Costo</th>':''}<th>P.Venta</th>${_esAdmin?'<th>Estado</th>':''}</tr></thead><tbody>${varRows}</tbody></table>`;
-  document.getElementById('mv-edit-btn').onclick=()=>{cerrarModal('modal-variantes');editarProducto(id);};
+  document.getElementById('mv-table').innerHTML=portadaHtml+`<table><thead><tr><th>Foto</th><th>Talla</th><th>Color</th><th>SKU</th><th>Stock</th><th>Mínimo</th><th>P.Costo</th><th>P.Venta</th><th>Estado</th></tr></thead><tbody>${varRows}</tbody></table>`;
+  // Edición de productos inhabilitada de momento — ocultamos el botón.
+  const _mvBtn=document.getElementById('mv-edit-btn');
+  if(_mvBtn){ _mvBtn.style.display='none'; _mvBtn.onclick=null; }
   abrirModal('modal-variantes');
 }
 
@@ -2509,74 +2495,11 @@ function renderAlertas(){
 //  USUARIOS
 // ════════════════════════════════════════
 let editingUserId=null;
-function renderUsuarios(){
-  const users=getUsers();
-  const wrap=document.getElementById('tabla-usuarios');
-  if(!users.length){wrap.innerHTML='<div class="empty"><div class="empty-icon"><i class="bi bi-people-fill" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin usuarios</h3></div>';return;}
-  const esAdmin = CU?.rol === 'admin';
-  let html=`<table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th>${esAdmin?'<th>Reporte</th>':''}<th>Acciones</th></tr></thead><tbody>`;
-  users.forEach(u=>{
-    const isMe=u.id===CU?.id;
-    const reporteCell = esAdmin
-      ? (u.rol==='vendedor'
-          ? `<td><button class="btn btn-sm" style="background:#10b981;color:#fff;font-weight:600;padding:6px 10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:4px" onclick="exportarExcelColaborador('${u.id}')" title="Descargar Excel del colaborador (corte 27 a 27)"><i class="bi bi-file-earmark-excel-fill"></i> Excel</button></td>`
-          : `<td style="color:var(--muted);font-size:12px">—</td>`)
-      : '';
-    html+=`<tr><td><strong>${u.nombre}</strong>${isMe?' <span class="badge badge-info">Tú</span>':''}</td><td style="font-family:monospace;font-size:12px">${u.username}</td><td>${u.rol==='admin'?'<span class="badge badge-purple">Administrador</span>':u.rol==='vendedor'?'<span class="badge badge-info">Vendedor</span>':'<span class="badge badge-gray">Operador</span>'}</td><td>${u.activo?'<span class="badge badge-success">Activo</span>':'<span class="badge badge-danger">Inactivo</span>'}</td>${reporteCell}<td><div style="display:flex;gap:4px"><button class="btn-icon" onclick="abrirModalUsuario('${u.id}')" title="Editar"><i class="bi bi-pencil-fill"></i></button>${!isMe?`<button class="btn-icon" onclick="toggleUser('${u.id}')" title="${u.activo?'Desactivar':'Activar'}"><i class="bi bi-${u.activo?'lock-fill':'unlock-fill'}"></i></button>`:''}${!isMe?`<button class="btn-icon" style="color:var(--danger)" onclick="pedirEliminarUser('${u.id}')" title="Eliminar"><i class="bi bi-trash-fill"></i></button>`:''}</div></td></tr>`;
-  });
-  wrap.innerHTML=html+'</tbody></table>';
-}
+function renderUsuarios(){const users=getUsers();const wrap=document.getElementById('tabla-usuarios');if(!users.length){wrap.innerHTML='<div class="empty"><div class="empty-icon"><i class="bi bi-people-fill" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin usuarios</h3></div>';return;}let html=`<table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`;users.forEach(u=>{const isMe=u.id===CU?.id;html+=`<tr><td><strong>${u.nombre}</strong>${isMe?' <span class="badge badge-info">Tú</span>':''}</td><td style="font-family:monospace;font-size:12px">${u.username}</td><td>${u.rol==='admin'?'<span class="badge badge-purple">Administrador</span>':u.rol==='vendedor'?'<span class="badge badge-info">Vendedor</span>':'<span class="badge badge-gray">Operador</span>'}</td><td>${u.activo?'<span class="badge badge-success">Activo</span>':'<span class="badge badge-danger">Inactivo</span>'}</td><td><div style="display:flex;gap:4px"><button class="btn-icon" onclick="abrirModalUsuario('${u.id}')" title="Editar"><i class="bi bi-pencil-fill"></i></button>${!isMe?`<button class="btn-icon" onclick="toggleUser('${u.id}')" title="${u.activo?'Desactivar':'Activar'}"><i class="bi bi-${u.activo?'lock-fill':'unlock-fill'}"></i></button>`:''}${!isMe?`<button class="btn-icon" style="color:var(--danger)" onclick="pedirEliminarUser('${u.id}')" title="Eliminar"><i class="bi bi-trash-fill"></i></button>`:''}</div></td></tr>`;});wrap.innerHTML=html+'</tbody></table>';}
 
-function abrirModalUsuario(id){
-  editingUserId=id||null;
-  if(id){
-    const u=getUsers().find(x=>x.id===id);
-    if(!u)return;
-    document.getElementById('mu-title').textContent='Editar Usuario';
-    document.getElementById('u-nombre').value=u.nombre;
-    document.getElementById('u-user').value=u.username;
-    document.getElementById('u-pin').value='';
-    document.getElementById('u-rol').value=u.rol;
-    document.getElementById('u-nombre-publi').value=u.nombrePubli||'';
-  } else {
-    document.getElementById('mu-title').textContent='Nuevo Usuario';
-    ['u-nombre','u-user','u-pin','u-nombre-publi'].forEach(x=>document.getElementById(x).value='');
-    document.getElementById('u-rol').value='vendedor';
-  }
-  // Mostrar el campo solo para vendedores
-  const toggleCampo=()=>{
-    const grp=document.getElementById('u-publi-grp');
-    if(grp) grp.style.display = document.getElementById('u-rol').value==='vendedor' ? 'block' : 'none';
-  };
-  toggleCampo();
-  document.getElementById('u-rol').onchange = toggleCampo;
-  abrirModal('modal-usuario');
-}
+function abrirModalUsuario(id){editingUserId=id||null;if(id){const u=getUsers().find(x=>x.id===id);if(!u)return;document.getElementById('mu-title').textContent='Editar Usuario';document.getElementById('u-nombre').value=u.nombre;document.getElementById('u-user').value=u.username;document.getElementById('u-pin').value='';document.getElementById('u-rol').value=u.rol;}else{document.getElementById('mu-title').textContent='Nuevo Usuario';['u-nombre','u-user','u-pin'].forEach(x=>document.getElementById(x).value='');document.getElementById('u-rol').value='vendedor';}abrirModal('modal-usuario');}
 
-function guardarUsuario(){
-  const nombre=document.getElementById('u-nombre').value.trim();
-  const username=document.getElementById('u-user').value.trim().toLowerCase();
-  const pin=document.getElementById('u-pin').value;
-  const rol=document.getElementById('u-rol').value;
-  const nombrePubli=document.getElementById('u-nombre-publi').value.trim();
-  if(!nombre||!username){toast('Nombre y usuario son requeridos');return;}
-  const users=getUsers();
-  if(editingUserId){
-    const u=users.find(x=>x.id===editingUserId);
-    if(u){
-      const updated={...u, nombre, username, rol, nombrePubli};
-      if(pin) updated.pin=pin;
-      writeUser(updated);
-    }
-    toast('Usuario actualizado');
-  } else {
-    if(!pin||pin.length<4){toast('PIN mínimo 4 caracteres');return;}
-    if(users.find(u=>u.username===username)){toast('Usuario ya existe');return;}
-    writeUser({id:uid(), nombre, username, pin, rol, nombrePubli, activo:true});
-    toast('Usuario creado');
-  }
-  cerrarModal('modal-usuario');
-}
+function guardarUsuario(){const nombre=document.getElementById('u-nombre').value.trim(),username=document.getElementById('u-user').value.trim().toLowerCase(),pin=document.getElementById('u-pin').value,rol=document.getElementById('u-rol').value;if(!nombre||!username){toast('Nombre y usuario son requeridos');return;}const users=getUsers();if(editingUserId){const u=users.find(x=>x.id===editingUserId);if(u){const updated={...u,nombre,username,rol};if(pin)updated.pin=pin;writeUser(updated);}toast('Usuario actualizado');}else{if(!pin||pin.length<4){toast('PIN mínimo 4 caracteres');return;}if(users.find(u=>u.username===username)){toast('Usuario ya existe');return;}writeUser({id:uid(),nombre,username,pin,rol,activo:true});toast('Usuario creado');}cerrarModal('modal-usuario');}
 
 function toggleUser(id){const u=getUsers().find(x=>x.id===id);if(u)writeUser({...u,activo:!u.activo});toast(u?.activo?'Desactivado':'Activado');}
 function pedirEliminarUser(id){const u=getUsers().find(x=>x.id===id);document.getElementById('confirm-msg').textContent=`¿Eliminar a "${u?.nombre}"?`;confirmCb=()=>{removeUser(id);toast('Usuario eliminado');};abrirModal('modal-confirm');}
@@ -2881,6 +2804,12 @@ function setTipoVenta(t,btn){
   if(t==='individual'){
     if(hint){hint.style.display='none';}
     if(precioG) precioG.style.display='block';
+  } else if(t==='cambio'){
+    // Cambio: comportamiento idéntico a individual (descuenta stock, exige
+    // precio por ítem — normalmente solo el costo del envío). Solo lo
+    // marcamos en el pedido para identificarlo en reportes y tablas.
+    if(hint){hint.style.display='block';hint.textContent='Cambio: descuenta stock como un pedido normal. Ingresa el precio del envío (o el valor que aplique).';}
+    if(precioG) precioG.style.display='block';
   } else {
     const n=COMBO_N[t];
     if(hint){hint.style.display='block';hint.textContent=`Agrega los ${n} productos del ${t}. El precio se pone una sola vez abajo, en el carrito.`;}
@@ -2912,7 +2841,7 @@ function agregarAlCarrito(){
   // En combo/trío el precio se define una sola vez para el grupo; en
   // individual se exige por ítem como siempre.
   let precio;
-  if(tipoVenta==='individual'){
+  if(tipoVenta==='individual' || tipoVenta==='cambio'){
     precio=parseFloat(document.getElementById('cart-precio').value)||0;
     if(!precio){toast('Ingresa el precio de venta');return;}
   } else {
@@ -2921,6 +2850,7 @@ function agregarAlCarrito(){
     precio=v.precio||0; // precio de referencia; el total va en el precio del combo
   }
   const cantidad=paresSeleccionados||1;
+  const esIndivOCambio=tipoVenta==='individual'||tipoVenta==='cambio';
   carrito.push({
     pid,vid,
     productoNombre:p.nombre,
@@ -2928,12 +2858,9 @@ function agregarAlCarrito(){
     cantidad,
     precio,
     precioRegistrado:v.precio||0,
+    // En "cambio" no marcamos precioBajo (es esperable que sea muy bajo, solo el envío)
     precioBajo:tipoVenta==='individual'&&!!(v.precio&&precio<v.precio),
-    precioAlto:tipoVenta==='individual'&&!!(v.precio&&precio>v.precio),
-    // Bodega congelada al momento del pedido. Garantiza que el reporte histórico
-    // siga clasificando correctamente al item aunque después cambien la bodega
-    // del producto (ej. muevan el modelo de "Bodega 1" a "PROMOCIÓNES").
-    bodegaAlMomento: p.bodega || ''
+    precioAlto:esIndivOCambio&&!!(v.precio&&precio>v.precio)
   });
   renderCarrito();
   // Reset selección de producto para agregar otro
@@ -2983,7 +2910,7 @@ function renderCarrito(){
   // ── Estado del modo combo/trío ────────────────────────────────────
   const comboG=document.getElementById('combo-precio-g');
   const badge=document.getElementById('carrito-combo-badge');
-  if(tipoVenta!=='individual'){
+  if(tipoVenta==='combo'||tipoVenta==='trio'){
     const n=COMBO_N[tipoVenta];
     if(comboG) comboG.style.display='block';
     const tlabel=document.getElementById('combo-precio-tipo'); if(tlabel) tlabel.textContent=tipoVenta;
@@ -2991,7 +2918,18 @@ function renderCarrito(){
     if(carrito.length===n && comboPrecio>0){ unlockPedidoStep2(); } else { lockPedidoStep2(); }
   } else {
     if(comboG) comboG.style.display='none';
-    if(badge) badge.style.display='none';
+    if(badge){
+      if(tipoVenta==='cambio' && carrito.length){
+        badge.style.display='inline-flex';
+        badge.style.background='#fef3c7';
+        badge.style.color='#92400e';
+        badge.textContent='CAMBIO';
+      } else {
+        badge.style.display='none';
+        badge.style.background='';
+        badge.style.color='';
+      }
+    }
     unlockPedidoStep2();
   }
 }
@@ -3183,7 +3121,7 @@ function aplicarEntradaStockPedido(ped, motivo){
 
 function registrarPedido(){
   if(!carrito.length){toast('Agrega al menos un producto al carrito');return;}
-  if(tipoVenta!=='individual'){
+  if(tipoVenta==='combo'||tipoVenta==='trio'){
     const n=COMBO_N[tipoVenta];
     if(carrito.length!==n){toast(`Un ${tipoVenta} debe tener exactamente ${n} productos.`);return;}
     if(!comboPrecio||comboPrecio<=0){toast('Ingresa el precio del '+tipoVenta);return;}
@@ -3265,8 +3203,8 @@ function registrarPedido(){
     talla:items[0].talla, color:items[0].color, sku:items[0].sku||'',
     cantidadPares:items.reduce((s,i)=>s+i.cantidad,0),
     tipoVenta,
-    comboPrecio: tipoVenta!=='individual' ? comboPrecio : 0,
-    precioVenta: tipoVenta!=='individual' ? comboPrecio : items.reduce((s,i)=>s+i.precioVenta*i.cantidad,0),
+    comboPrecio: (tipoVenta==='combo'||tipoVenta==='trio') ? comboPrecio : 0,
+    precioVenta: (tipoVenta==='combo'||tipoVenta==='trio') ? comboPrecio : items.reduce((s,i)=>s+i.precioVenta*i.cantidad,0),
     precioBajo:hayPrecioBajo, precioAlto:hayPrecioAlto,
     cliente:clienteInfo,
     formaPago,
@@ -3467,33 +3405,40 @@ function estadoEfectivo(ped){
 let pedidoAccionId=null;
 
 function onFiltroFechaRapidoChange(){
-  // Al elegir un filtro rápido, limpiamos el calendario de día específico
-  const di=document.getElementById('filter-admin-fecha-dia');
-  if(di) di.value='';
+  // Al elegir un filtro rápido, limpiamos el rango Desde/Hasta
+  const d=document.getElementById('filter-admin-fecha-desde'); if(d) d.value='';
+  const h=document.getElementById('filter-admin-fecha-hasta'); if(h) h.value='';
   renderAdminPedidos();
 }
-function onFiltroFechaDiaChange(){
-  // Al elegir un día concreto, limpiamos el filtro rápido para no confundir
+function onFiltroFechaRangoChange(){
+  // Al elegir un rango, limpiamos el filtro rápido para no confundir
   const sel=document.getElementById('filter-admin-fecha');
   if(sel) sel.value='';
   renderAdminPedidos();
 }
-function limpiarFiltroFechaDia(){
-  const di=document.getElementById('filter-admin-fecha-dia');
-  if(di){ di.value=''; renderAdminPedidos(); }
+function limpiarFiltroFechaRango(){
+  const d=document.getElementById('filter-admin-fecha-desde'); if(d) d.value='';
+  const h=document.getElementById('filter-admin-fecha-hasta'); if(h) h.value='';
+  renderAdminPedidos();
 }
 
 function renderAdminPedidos(){
   const filtroEstado=document.getElementById('filter-admin-pedidos')?.value||'';
   const filtroVend=document.getElementById('filter-admin-vendedor')?.value||'';
   const filtroFecha=document.getElementById('filter-admin-fecha')?.value||'';
-  const filtroFechaDia=document.getElementById('filter-admin-fecha-dia')?.value||'';
+  const filtroFechaDesde=document.getElementById('filter-admin-fecha-desde')?.value||'';
+  const filtroFechaHasta=document.getElementById('filter-admin-fecha-hasta')?.value||'';
   const today=hoy();
   const lunDate=new Date(); const dow=lunDate.getDay(); lunDate.setDate(lunDate.getDate()-(dow===0?6:dow-1));
   const lunes=lunDate.toISOString().slice(0,10);
   const ayerDate=new Date(); ayerDate.setDate(ayerDate.getDate()-1);
   const ayer=ayerDate.toISOString().slice(0,10);
   const mesInicio=today.slice(0,8)+'01';
+  // Mapa pedidoId → fecha de la guía. Los filtros de fecha cuentan desde
+  // que se subió la guía, no desde la creación del pedido.
+  const guiaFechaPorPedido={};
+  getGuias().forEach(g=>{ if(g.pedidoId) guiaFechaPorPedido[g.pedidoId]=g.fecha||(g.ts?new Date(g.ts).toISOString().slice(0,10):null); });
+  const fechaParaFiltro=ped=>guiaFechaPorPedido[ped.id]||null;
   const vselEl=document.getElementById('filter-admin-vendedor');
   if(vselEl&&vselEl.options.length<=1){
     const vendors=[...new Set(getPedidos().map(p=>p.vendedorNombre).filter(Boolean))].sort();
@@ -3503,28 +3448,38 @@ function renderAdminPedidos(){
   let pedidos=getPedidos();
   if(filtroEstado) pedidos=pedidos.filter(p=>estadoEfectivo(p)===filtroEstado);
   if(filtroVend)   pedidos=pedidos.filter(p=>p.vendedorNombre===filtroVend);
-  if(filtroFechaDia){
-    pedidos=pedidos.filter(p=>p.fecha===filtroFechaDia);
-  } else {
-    if(filtroFecha==='hoy')    pedidos=pedidos.filter(p=>p.fecha===today);
-    if(filtroFecha==='ayer')   pedidos=pedidos.filter(p=>p.fecha===ayer);
-    if(filtroFecha==='semana') pedidos=pedidos.filter(p=>p.fecha>=lunes);
-    if(filtroFecha==='mes')    pedidos=pedidos.filter(p=>p.fecha>=mesInicio);
+  const hayFiltroFecha = filtroFecha || filtroFechaDesde || filtroFechaHasta;
+  if(hayFiltroFecha){
+    pedidos=pedidos.filter(p=>{
+      const f=fechaParaFiltro(p);
+      if(!f) return false; // sin guía → no entra en filtros de fecha
+      if(filtroFechaDesde && f<filtroFechaDesde) return false;
+      if(filtroFechaHasta && f>filtroFechaHasta) return false;
+      if(filtroFecha==='hoy'    && f!==today)  return false;
+      if(filtroFecha==='ayer'   && f!==ayer)   return false;
+      if(filtroFecha==='semana' && f<lunes)    return false;
+      if(filtroFecha==='mes'    && f<mesInicio) return false;
+      return true;
+    });
   }
   const btnGuias=document.getElementById('btn-guias-masivas');
   if(btnGuias) btnGuias.style.display=pedidos.length?'inline-flex':'none';
   const el=document.getElementById('admin-pedidos-content');
-  if(!pedidos.length){el.innerHTML=`<div class="card"><div class="empty"><div class="empty-icon"><i class="bi bi-bag-x" style="font-size:38px;color:var(--muted)"></i></div><h3>${filtroEstado||filtroVend||filtroFecha||filtroFechaDia?'Sin pedidos con esos filtros'+(filtroFechaDia?' (día '+fmtD(filtroFechaDia)+')':''):'No hay pedidos registrados'}</h3></div></div>`;return;}
-  const banner=filtroFechaDia
+  const rotuloRango = (filtroFechaDesde && filtroFechaHasta)
+    ? `${fmtD(filtroFechaDesde)} → ${fmtD(filtroFechaHasta)}`
+    : filtroFechaDesde ? `desde ${fmtD(filtroFechaDesde)}`
+    : filtroFechaHasta ? `hasta ${fmtD(filtroFechaHasta)}` : '';
+  if(!pedidos.length){el.innerHTML=`<div class="card"><div class="empty"><div class="empty-icon"><i class="bi bi-bag-x" style="font-size:38px;color:var(--muted)"></i></div><h3>${filtroEstado||filtroVend||filtroFecha||rotuloRango?'Sin pedidos con esos filtros'+(rotuloRango?' ('+rotuloRango+')':''):'No hay pedidos registrados'}</h3>${hayFiltroFecha?'<p style="font-size:11px;color:var(--muted);margin-top:6px">Los filtros de fecha cuentan desde que se sube la guía. Pedidos sin guía no aparecen.</p>':''}</div></div>`;return;}
+  const banner=rotuloRango
     ? `<div class="card mb-16" style="background:linear-gradient(135deg,#e0e7ff,#ede9fe);border:1px solid #c7d2fe;display:flex;align-items:center;justify-content:space-between;padding:12px 16px">
         <div style="display:flex;align-items:center;gap:10px">
           <i class="bi bi-calendar-check-fill" style="color:var(--primary);font-size:18px"></i>
           <div>
-            <div style="font-size:13px;font-weight:700;color:var(--primary-dark)">Mostrando pedidos del ${fmtD(filtroFechaDia)}</div>
+            <div style="font-size:13px;font-weight:700;color:var(--primary-dark)">Mostrando pedidos con guía: ${rotuloRango}</div>
             <div style="font-size:11px;color:var(--muted)">${pedidos.length} pedido${pedidos.length===1?'':'s'} encontrado${pedidos.length===1?'':'s'}</div>
           </div>
         </div>
-        <button class="btn btn-sm btn-outline" onclick="limpiarFiltroFechaDia()"><i class="bi bi-x-lg"></i> Quitar filtro</button>
+        <button class="btn btn-sm btn-outline" onclick="limpiarFiltroFechaRango()"><i class="bi bi-x-lg"></i> Quitar rango</button>
       </div>`
     : '';
   let html=banner+`<div class="card"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Producto</th><th>Cliente</th><th>Ciudad</th><th>Pago</th><th>Precio</th><th>Vendedor</th><th>Guía</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`;
@@ -3540,7 +3495,9 @@ function renderAdminPedidos(){
       ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo combo (2 productos a un precio único)"><i class="bi bi-box-seam-fill"></i> COMBO</span>`
       :ped.tipoVenta==='trio'
         ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo trío (3 productos a un precio único)"><i class="bi bi-boxes"></i> TRÍO</span>`
-        :'';
+        :ped.tipoVenta==='cambio'
+          ?` <span class="badge" style="background:#fef3c7;color:#92400e;font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo cambio"><i class="bi bi-arrow-left-right"></i> CAMBIO</span>`
+          :'';
     html+=`<tr${ped.precioBajo?' style="background:#fffbeb"':''}>
       <td style="white-space:nowrap;font-size:12px">${fmtD(ped.fecha)}${ped.ts?`<div style="font-size:10px;color:var(--muted);margin-top:2px"><i class="bi bi-clock"></i> ${fmtT(ped.ts)}</div>`:''}</td>
       <td><div style="font-size:13px">${pedResumen(ped)}${comboBadge}</div>${paresInfo}</td>
@@ -3548,7 +3505,7 @@ function renderAdminPedidos(){
           <div style="font-size:10px;color:var(--muted)">${ped.cliente.barrio||''}${ped.cliente.ciudad?', '+ped.cliente.ciudad:''}</div></td>
       <td style="font-size:12px">${ped.cliente.ciudad||'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${ped.formaPago?ped.formaPago.charAt(0).toUpperCase()+ped.formaPago.slice(1):'—'}</td>
-      <td style="font-size:12px;white-space:nowrap">${ped.precioVenta?fmtM(ped.precioVenta):'—'}${precioBadge}</td>
+      <td style="font-size:12px;white-space:nowrap">${ped.precioVenta?fmtM(ped.precioVenta):'—'}${comboBadge}${precioBadge}</td>
       <td style="font-size:12px;color:var(--muted)">${ped.vendedorNombre||'—'}</td>
       <td style="font-size:12px">${guia?`<span style="font-family:monospace">${guia.numero}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
       <td>${estadoBadge(estadoEfectivo(ped))}</td>
@@ -4468,21 +4425,23 @@ function exportarGuiasMasivas(){
   const filtroEstado=document.getElementById('filter-admin-pedidos')?.value||'';
   const filtroVend=document.getElementById('filter-admin-vendedor')?.value||'';
   const filtroFecha=document.getElementById('filter-admin-fecha')?.value||'';
-  const filtroFechaDia=document.getElementById('filter-admin-fecha-dia')?.value||'';
+  const filtroFechaDesde=document.getElementById('filter-admin-fecha-desde')?.value||'';
+  const filtroFechaHasta=document.getElementById('filter-admin-fecha-hasta')?.value||'';
   const today=hoy();
   const lunDate=new Date(); const dow=lunDate.getDay(); lunDate.setDate(lunDate.getDate()-(dow===0?6:dow-1));
   const lunes=lunDate.toISOString().slice(0,10);
   const ayerDate=new Date(); ayerDate.setDate(ayerDate.getDate()-1);
   const ayer=ayerDate.toISOString().slice(0,10);
   const mesInicio=today.slice(0,8)+'01';
-  // Excluir pedidos cancelados, entregados o que ya tienen guía registrada
+  // En guías masivas los pedidos elegibles NO tienen guía aún, por eso el
+  // filtro de fecha cae sobre la fecha de creación del pedido (no hay guía).
   const guiasExistentes=new Set(getGuias().map(g=>g.pedidoId));
   let pedidos=getPedidos().filter(p=>p.estado!=='cancelado'&&p.estado!=='entregado'&&p.estado!=='enviado'&&!p.guiaId&&!guiasExistentes.has(p.id));
   if(filtroEstado) pedidos=pedidos.filter(p=>p.estado===filtroEstado);
   if(filtroVend)   pedidos=pedidos.filter(p=>p.vendedorNombre===filtroVend);
-  if(filtroFechaDia){
-    pedidos=pedidos.filter(p=>p.fecha===filtroFechaDia);
-  } else {
+  if(filtroFechaDesde) pedidos=pedidos.filter(p=>p.fecha>=filtroFechaDesde);
+  if(filtroFechaHasta) pedidos=pedidos.filter(p=>p.fecha<=filtroFechaHasta);
+  if(!filtroFechaDesde && !filtroFechaHasta){
     if(filtroFecha==='hoy')    pedidos=pedidos.filter(p=>p.fecha===today);
     if(filtroFecha==='ayer')   pedidos=pedidos.filter(p=>p.fecha===ayer);
     if(filtroFecha==='semana') pedidos=pedidos.filter(p=>p.fecha>=lunes);
@@ -5250,10 +5209,6 @@ function renderPublicidad(){
     try{
       db.ref('titanbotas/publicidad/snapshot').on('value', snap=>{
         _publiSnap=snap.val()||null;
-        // Captura automática del día: si soy admin, escribo el snapshot de HOY en
-        // titanbotas/publicidad/historico/{YYYY-MM-DD}. Así el histórico se va
-        // armando solo día por día y el reporte Excel 27-a-27 tiene datos reales.
-        capturarSnapshotEnHistorico(_publiSnap);
         if(currentPage==='publicidad') renderPublicidadCuerpo();
       });
       db.ref('titanbotas/publicidad/historico').on('value', snap=>{
@@ -5264,41 +5219,6 @@ function renderPublicidad(){
     }catch(e){console.warn('No se pudo suscribir a publicidad',e);}
   }
   renderPublicidadCuerpo();
-}
-
-// Captura el snapshot del día actual en titanbotas/publicidad/historico/{YYYY-MM-DD}.
-// — Solo admin escribe (evita writes duplicados de otros usuarios).
-// — Se ejecuta cada vez que el snapshot cambia. La última escritura del día gana,
-//   así al final del día queda el dato consolidado.
-// — Throttle de 30s para no saturar Firebase si el snapshot cambia muy seguido.
-let _ultCapturaTs = 0;
-function capturarSnapshotEnHistorico(snapData){
-  try{
-    if(!snapData || !snapData.rangos || !snapData.rangos.hoy) return;
-    if(CU?.rol !== 'admin') return;                       // solo admin
-    if(!USE_FIREBASE || !window.db) return;
-    const now = Date.now();
-    if(now - _ultCapturaTs < 30000) return;              // throttle 30s
-    _ultCapturaTs = now;
-    const fechaHoy = hoy();                              // YYYY-MM-DD hora Colombia
-    const dataHoy = snapData.rangos.hoy;
-    // Validar que tenga al menos algo de info útil (evita escribir objetos vacíos)
-    const tieneAlgo = (dataHoy.gastoTotal||0) > 0
-      || (dataHoy.mensajesTotal||0) > 0
-      || (Array.isArray(dataHoy.vendedores) && dataHoy.vendedores.length > 0);
-    if(!tieneAlgo) return;
-    db.ref(`titanbotas/publicidad/historico/${fechaHoy}`).set({
-      ...dataHoy,
-      capturedAt: now,
-      capturedBy: 'app-auto'
-    }).then(()=>{
-      console.info(`[Histórico] Snapshot de ${fechaHoy} capturado automáticamente.`);
-    }).catch(e=>{
-      console.warn('[Histórico] No se pudo escribir', fechaHoy, e);
-    });
-  } catch(e){
-    console.warn('capturarSnapshotEnHistorico falló:', e);
-  }
 }
 
 // Dispara el flujo de n8n (Flujo A) que vuelve a leer Meta + Firebase y reescribe
@@ -5595,623 +5515,6 @@ function renderPubliAlertas(rows){
     const ic=a.tipo==='danger'?'bi-exclamation-octagon-fill':'bi-exclamation-triangle-fill';
     return `<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px"><i class="bi ${ic}" style="color:${bd}"></i> ${a.texto}</div>`;
   }).join('');
-}
-
-// ════════════════════════════════════════
-//  REPORTE EXCEL POR COLABORADOR
-//  Solo admin. Corte 27 a 27. Excluye bodega "PROMOCIÓNES" en conteo de pares.
-//  Cruza pedidos (Firebase: titanbotas/pedidos) + guías + datos de publicidad
-//  del histórico que escribe n8n (titanbotas/publicidad/historico/YYYY-MM-DD).
-// ════════════════════════════════════════
-
-function _normTxt(s){ return String(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim(); }
-
-// Rango 27-a-27. Si hoy>=27 → 27 del mes actual hasta hoy.
-// Si hoy<27 → 27 del mes anterior hasta hoy.
-function _rangoCorte27(){
-  const hoy=new Date();
-  const d=hoy.getDate(), m=hoy.getMonth(), y=hoy.getFullYear();
-  const inicio = d>=27 ? new Date(y,m,27) : new Date(y,m-1,27);
-  const fin = new Date(y,m,d);
-  const toIso = x => {
-    const yy=x.getFullYear(), mm=String(x.getMonth()+1).padStart(2,'0'), dd=String(x.getDate()).padStart(2,'0');
-    return `${yy}-${mm}-${dd}`;
-  };
-  return { inicio, fin, inicioIso: toIso(inicio), finIso: toIso(fin) };
-}
-
-function _pedidoEnRango(ped, rango){
-  const f = ped.fecha || (ped.ts ? new Date(ped.ts).toISOString().slice(0,10) : null);
-  if(!f) return false;
-  return f >= rango.inicioIso && f <= rango.finIso;
-}
-
-// Primera palabra del nombre normalizada — para matchear "LILIANA 24/03" ↔ "LILIANA"
-// Match vendedor↔fila de publicidad. Estrategia:
-// 1) Si el usuario tiene `nombrePubli` explícito → match EXACTO (case/tildes insensitivo).
-//    Esto elimina ambigüedad cuando hay vendedores con la misma primera palabra.
-// 2) Si no → fallback a primera palabra (comportamiento histórico).
-function _matchVendedorPubli(nombrePubliRow, nombreUser, nombrePubliExacto){
-  if(nombrePubliExacto){
-    return _normTxt(nombrePubliRow) === _normTxt(nombrePubliExacto);
-  }
-  return _matchVendedorPubli_primerNombre(nombrePubliRow, nombreUser);
-}
-function _matchVendedorPubli_primerNombre(nombrePubli, nombreUser){
-  const np = _normTxt((nombrePubli||'').split(/\s+/)[0]);
-  const nu = _normTxt((nombreUser||'').split(/\s+/)[0]);
-  return np && nu && np === nu;
-}
-
-function _itemEsPromocion(item, prodsCache){
-  // Preferimos la bodega congelada al momento del pedido (item.bodegaAlMomento).
-  // Si el pedido es antiguo y no la tiene, caemos al estado actual del producto.
-  const bod = item.bodegaAlMomento || (prodsCache.find(x => x.id === item.pid)?.bodega) || '';
-  return _normTxt(bod) === _normTxt('PROMOCIÓNES');
-}
-
-function _calcParesVendedor(userId, rango){
-  const pedidos = getPedidos().filter(p => p.vendedorId === userId && _pedidoEnRango(p, rango));
-  const guias = getGuias();
-  const prods = getProds();
-  let confirmados=0, viajando=0, porConfirmar=0;
-  const detalle = [];
-  pedidos.forEach(ped => {
-    const items = Array.isArray(ped.items)&&ped.items.length ? ped.items
-      : [{pid:ped.pid||ped.productoId, vid:ped.vid||ped.varianteId, cantidad:ped.cantidadPares||1, productoNombre:ped.productoNombre, talla:ped.talla, color:ped.color}];
-    let paresContables=0, paresPromo=0;
-    items.forEach(it => {
-      const esPromo = _itemEsPromocion(it, prods);
-      if(esPromo) paresPromo += (it.cantidad||0);
-      else paresContables += (it.cantidad||0);
-    });
-    const guia = guias.find(g => g.pedidoId === ped.id);
-    const ea = guia?.estadoActual || null;
-    let categoria;
-    if(ped.estado === 'pendiente'){ categoria='por_confirmar'; porConfirmar += paresContables; }
-    else if(ped.estado === 'aprobado' && ea === 'entregada'){ categoria='confirmado'; confirmados += paresContables; }
-    else if(ped.estado === 'aprobado'){ categoria='viajando'; viajando += paresContables; }
-    else { categoria = ped.estado || 'otro'; }
-    detalle.push({
-      fecha: ped.fecha,
-      pedidoId: ped.id.slice(-6),
-      cliente: ped.cliente?.nombre || '',
-      ciudad: ped.cliente?.ciudad || '',
-      productos: items.map(i => `${i.productoNombre||'—'} T${i.talla||''}/${i.color||''} ×${i.cantidad||1}`).join(' + '),
-      paresContables, paresPromo,
-      categoria,
-      estadoPed: ped.estado || '',
-      estadoGuia: ea || '—',
-      precio: ped.precioVenta || 0
-    });
-  });
-  return { confirmados, viajando, porConfirmar, detalle, totalPedidos: pedidos.length };
-}
-
-async function _calcPublicidadVendedor(userObj, rango){
-  // Acepta tanto un string (compat hacia atrás) como un user object con nombre+nombrePubli
-  const nombreUser = (typeof userObj === 'string') ? userObj : (userObj?.nombre || '');
-  const nombrePubliExacto = (typeof userObj === 'string') ? '' : (userObj?.nombrePubli || '');
-  const empty = { gastoTotal:0, mensajesTotal:0, ventaEntTotal:0, ventaRutaTotal:0, costoEntTotal:0, costoRutaTotal:0, utilidadTotal:0, roasTotal:0, detalleDias:[], campañas:[], fuente:'sin-datos' };
-  if(!window.db){ return empty; }
-  let hist={}, snapData=null;
-  try{
-    const s1 = await db.ref('titanbotas/publicidad/historico').once('value');
-    hist = s1.val() || {};
-  } catch(e){ console.warn('No se pudo leer publicidad/historico', e); }
-  try{
-    const s2 = await db.ref('titanbotas/publicidad/snapshot').once('value');
-    snapData = s2.val() || null;
-  } catch(e){ console.warn('No se pudo leer publicidad/snapshot', e); }
-
-  // ── Helper: agrega filas de vendedores a un acumulador por campaña ──
-  const aggregateRows = (vendedores, acumPorCamp) => {
-    let g=0, m=0, ve=0, vr=0, ce=0, cr=0;
-    vendedores.filter(v => _matchVendedorPubli(v.nombre, nombreUser, nombrePubliExacto)).forEach(mio => {
-      const _g=mio.gasto||0, _m=mio.mensajes||0, _ve=mio.ventaEntregada||0, _vr=mio.ventaEnRuta||0;
-      const _ce=mio.costoEntregado||0, _cr=mio.costoEnRuta||0;
-      g+=_g; m+=_m; ve+=_ve; vr+=_vr; ce+=_ce; cr+=_cr;
-      const key = mio.campañaId || mio.campaignId || mio.nombre || 'sin-id';
-      if(!acumPorCamp[key]){
-        acumPorCamp[key] = { nombre:mio.nombre||'—', estado:mio.estado||'—', antiguedadDias:mio.antiguedadDias||0,
-          presupuestoDiario:mio.presupuestoDiario||0, gasto:0, mensajes:0, ventaEntregada:0, ventaEnRuta:0,
-          costoEntregado:0, costoEnRuta:0, ctrSum:0, cpmSum:0, cpcSum:0, diasConDatos:0 };
-      }
-      const c = acumPorCamp[key];
-      c.gasto+=_g; c.mensajes+=_m; c.ventaEntregada+=_ve; c.ventaEnRuta+=_vr;
-      c.costoEntregado+=_ce; c.costoEnRuta+=_cr;
-      c.ctrSum+=(mio.ctr||0); c.cpmSum+=(mio.cpm||0); c.cpcSum+=(mio.cpc||0);
-      c.diasConDatos+=1;
-      if(mio.estado) c.estado = mio.estado;
-      if(mio.antiguedadDias!=null) c.antiguedadDias = mio.antiguedadDias;
-      if(mio.presupuestoDiario!=null) c.presupuestoDiario = mio.presupuestoDiario;
-    });
-    return { g, m, ve, vr, ce, cr };
-  };
-
-  let gastoTotal=0, mensajesTotal=0, ventaEntTotal=0, ventaRutaTotal=0, costoEntTotal=0, costoRutaTotal=0;
-  const detalleDias = [];
-  const porCamp = {};
-  let fuente = 'sin-datos';
-
-  // ── PRIMERA OPCIÓN: histórico día por día (preciso para corte 27-a-27) ──
-  const diasEnRango = Object.keys(hist).filter(f => f >= rango.inicioIso && f <= rango.finIso).sort();
-  let diasConMatch = 0;
-  diasEnRango.forEach(fecha => {
-    const dia = hist[fecha];
-    const vendedores = (dia && dia.vendedores) || [];
-    const antes = Object.keys(porCamp).length;
-    const sums = aggregateRows(vendedores, porCamp);
-    if(sums.g>0 || sums.m>0 || sums.ve>0 || sums.vr>0 || Object.keys(porCamp).length>antes){
-      diasConMatch++;
-      gastoTotal+=sums.g; mensajesTotal+=sums.m; ventaEntTotal+=sums.ve; ventaRutaTotal+=sums.vr;
-      costoEntTotal+=sums.ce; costoRutaTotal+=sums.cr;
-      detalleDias.push({ fecha, gasto:sums.g, mensajes:sums.m, ventaEntregada:sums.ve, ventaEnRuta:sums.vr, costoEntregado:sums.ce, costoEnRuta:sums.cr });
-    }
-  });
-  if(diasConMatch > 0) fuente = `histórico (${diasConMatch} días con datos)`;
-
-  // ── FALLBACK: si el histórico no tiene datos, usamos el snapshot.rangos ──
-  // Esto es lo que el usuario ve en pantalla. Es menos preciso (rango = mes/semana/hoy
-  // del calendario, no 27-a-27), pero garantiza que el reporte no salga vacío.
-  if(diasConMatch === 0 && snapData && snapData.rangos){
-    // Tomamos 'mes' (el más cercano a 27-a-27). Si tampoco hay, intentamos semana/hoy.
-    const orden = ['mes','semana','hoy'];
-    let rangoUsado = null, dataUsada = null;
-    for(const r of orden){
-      const d = snapData.rangos[r];
-      if(d && Array.isArray(d.vendedores) && d.vendedores.some(v => _matchVendedorPubli(v.nombre, nombreUser, nombrePubliExacto))){
-        rangoUsado = r; dataUsada = d; break;
-      }
-    }
-    if(dataUsada){
-      const sums = aggregateRows(dataUsada.vendedores, porCamp);
-      gastoTotal+=sums.g; mensajesTotal+=sums.m; ventaEntTotal+=sums.ve; ventaRutaTotal+=sums.vr;
-      costoEntTotal+=sums.ce; costoRutaTotal+=sums.cr;
-      fuente = `snapshot.rangos.${rangoUsado} (histórico vacío en el rango — datos del calendario natural)`;
-      console.info(`[Excel] ${nombreUser}: histórico vacío para ${rango.inicioIso}→${rango.finIso}. Usando snapshot.rangos.${rangoUsado}.`);
-    }
-  }
-
-  const campañas = Object.values(porCamp).map(c => ({
-    nombre: c.nombre,
-    estado: c.estado,
-    antiguedadDias: c.antiguedadDias,
-    gasto: c.gasto,
-    presupuestoDiario: c.presupuestoDiario,
-    mensajes: c.mensajes,
-    cpconv: c.mensajes>0 ? c.gasto/c.mensajes : 0,
-    ctr: c.diasConDatos>0 ? c.ctrSum/c.diasConDatos : 0,
-    cpm: c.diasConDatos>0 ? c.cpmSum/c.diasConDatos : 0,
-    cpc: c.diasConDatos>0 ? c.cpcSum/c.diasConDatos : 0,
-    ventaEntregada: c.ventaEntregada,
-    ventaEnRuta: c.ventaEnRuta,
-    costoEntregado: c.costoEntregado,
-    costoEnRuta: c.costoEnRuta,
-    utilidad: c.ventaEntregada - c.costoEntregado - c.gasto,
-    roasEntregado: c.gasto>0 ? c.ventaEntregada/c.gasto : 0
-  })).sort((a,b) => (b.gasto||0) - (a.gasto||0));
-  const utilidadTotal = ventaEntTotal - costoEntTotal - gastoTotal;
-  const roasTotal = gastoTotal > 0 ? (ventaEntTotal / gastoTotal) : 0;
-  return { gastoTotal, mensajesTotal, ventaEntTotal, ventaRutaTotal, costoEntTotal, costoRutaTotal, utilidadTotal, roasTotal, detalleDias, campañas, fuente };
-}
-
-async function _generarGraficoPng(config, w=600, h=380){
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  canvas.style.position='fixed'; canvas.style.left='-9999px'; canvas.style.top='-9999px';
-  document.body.appendChild(canvas);
-  const cfg = JSON.parse(JSON.stringify(config));
-  cfg.options = cfg.options || {};
-  cfg.options.animation = false;
-  cfg.options.responsive = false;
-  cfg.options.maintainAspectRatio = false;
-  const chart = new Chart(canvas, cfg);
-  await new Promise(r => setTimeout(r, 120));
-  const dataUrl = canvas.toDataURL('image/png');
-  chart.destroy();
-  document.body.removeChild(canvas);
-  return dataUrl;
-}
-
-async function exportarExcelColaborador(userId){
-  if(CU?.rol !== 'admin'){ toast('Solo el administrador puede descargar este reporte'); return; }
-  if(typeof ExcelJS === 'undefined'){ toast('Librería ExcelJS no cargada — refresca la página'); return; }
-  const user = getUsers().find(u => u.id === userId);
-  if(!user){ toast('Usuario no encontrado'); return; }
-  toast('Generando reporte de ' + user.nombre + '…');
-  try {
-    const rango = _rangoCorte27();
-    const pares = _calcParesVendedor(userId, rango);
-    const publi = await _calcPublicidadVendedor(user, rango);
-    const ventasConfirmadas = pares.confirmados;
-    const correlacion = publi.mensajesTotal > 0 ? (ventasConfirmadas / publi.mensajesTotal) * 100 : 0;
-    const costoPorVenta = ventasConfirmadas > 0 ? (publi.gastoTotal / ventasConfirmadas) : 0;
-    const fmtMoney = n => '$'+Math.round(n||0).toLocaleString('es-CO');
-
-    // ── Workbook con UNA SOLA hoja ──
-    const wb = new ExcelJS.Workbook();
-    wb.creator = 'Titan Botas';
-    wb.created = new Date();
-    const ws = wb.addWorksheet('Reporte', { views:[{ showGridLines:false, zoomScale:100 }] });
-    // 14 columnas para que la tabla de campañas quepa cómoda
-    ws.columns = [
-      { width:22 },{ width:11 },{ width:9 },{ width:13 },{ width:14 },{ width:11 },{ width:12 },
-      { width:9 },{ width:11 },{ width:11 },{ width:15 },{ width:15 },{ width:14 },{ width:13 }
-    ];
-    const COL_END = 'N'; // última columna (14)
-    let row = 1;
-
-    // ── BANNER ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    const banner = ws.getCell(`A${row}`);
-    banner.value = `TITAN BOTAS — Reporte de ${user.nombre}`;
-    banner.font = { name:'Calibri', size:22, bold:true, color:{argb:'FFFFFFFF'} };
-    banner.alignment = { vertical:'middle', horizontal:'center' };
-    banner.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E1B4B'} };
-    ws.getRow(row).height = 42;
-    row++;
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    const subBanner = ws.getCell(`A${row}`);
-    subBanner.value = `Periodo: ${rango.inicioIso}  →  ${rango.finIso}   |   Generado: ${new Date().toLocaleString('es-CO')}   |   Cierre 27 a 27`;
-    subBanner.font = { italic:true, color:{argb:'FFFFFFFF'}, size:11 };
-    subBanner.alignment = { horizontal:'center', vertical:'middle' };
-    subBanner.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF312E81'} };
-    ws.getRow(row).height = 24;
-    row++; row++; // espacio
-
-    // ── 📊 RESUMEN PRINCIPAL — 3 KPI cards prominentes ──
-    const kpiHeaderRow = row;
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    const kpiHdr = ws.getCell(`A${row}`);
-    kpiHdr.value = '📊  RESUMEN PRINCIPAL';
-    kpiHdr.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    kpiHdr.alignment = { horizontal:'left', vertical:'middle' };
-    kpiHdr.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++; row++;
-
-    // 3 KPI cards (cada uno ocupa columnas: 1-4, 5-9, 10-14)
-    const cardSpans = [['A','D'],['E','I'],['J','N']];
-    const cardData = [
-      { titulo:'COSTO POR MENSAJE', valor: publi.mensajesTotal>0 ? fmtMoney(publi.gastoTotal / publi.mensajesTotal) : '—', sub:`Gasto / Mensajes  (${publi.mensajesTotal} mensajes)`, color:'FFEF4444' },
-      { titulo:'GASTO TOTAL EN PUBLICIDAD', valor: fmtMoney(publi.gastoTotal), sub:`Suma del periodo`, color:'FF7C3AED' },
-      { titulo:'MENSAJES RECIBIDOS', valor: publi.mensajesTotal.toString(), sub:`Chats por publicidad`, color:'FF3B82F6' }
-    ];
-    cardData.forEach((card, i) => {
-      const [c0, c1] = cardSpans[i];
-      // Título card (fondo color, texto blanco)
-      ws.mergeCells(`${c0}${row}:${c1}${row}`);
-      const tCell = ws.getCell(`${c0}${row}`);
-      tCell.value = card.titulo;
-      tCell.font = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
-      tCell.alignment = { horizontal:'center', vertical:'middle' };
-      tCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:card.color} };
-      // Valor grande
-      ws.mergeCells(`${c0}${row+1}:${c1}${row+1}`);
-      const vCell = ws.getCell(`${c0}${row+1}`);
-      vCell.value = card.valor;
-      vCell.font = { bold:true, color:{argb:card.color}, size:28 };
-      vCell.alignment = { horizontal:'center', vertical:'middle' };
-      vCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFFFFF'} };
-      vCell.border = { left:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
-      // Subtítulo
-      ws.mergeCells(`${c0}${row+2}:${c1}${row+2}`);
-      const sCell = ws.getCell(`${c0}${row+2}`);
-      sCell.value = card.sub;
-      sCell.font = { italic:true, color:{argb:'FF64748B'}, size:10 };
-      sCell.alignment = { horizontal:'center', vertical:'middle' };
-      sCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFFFFF'} };
-      sCell.border = { bottom:{style:'thin', color:{argb:'FFE5E7EB'}}, left:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
-    });
-    ws.getRow(row).height = 28;
-    ws.getRow(row+1).height = 50;
-    ws.getRow(row+2).height = 22;
-    row += 4; // 3 filas usadas + 1 espacio
-
-    // ── 📦 PEDIDOS DEL PERIODO (pares) ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    let h = ws.getCell(`A${row}`);
-    h.value = '📦  PARES DEL PERIODO  (excluye bodega PROMOCIÓNES)';
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    // Encabezados
-    const paresHdr = ['Categoría','Pares','Visual'];
-    paresHdr.forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'} };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF6366F1'} };
-      cell.alignment = { horizontal:'center' };
-    });
-    ws.mergeCells(`C${row}:${COL_END}${row}`);
-    row++;
-    const paresStart = row;
-    const paresFilas = [
-      ['Pares confirmados (entregados)', pares.confirmados, 'FF10B981'],
-      ['Pares viajando (en ruta)', pares.viajando, 'FF3B82F6'],
-      ['Pares por confirmar (pendientes)', pares.porConfirmar, 'FFF59E0B'],
-      ['TOTAL pares en gestión', pares.confirmados+pares.viajando+pares.porConfirmar, 'FF1E1B4B']
-    ];
-    paresFilas.forEach((rowData, i) => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = rowData[0];
-      r.getCell(2).value = rowData[1];
-      r.getCell(1).font = { bold:i===3 };
-      r.getCell(2).font = { bold:true, color:{argb:rowData[2]}, size:13 };
-      r.getCell(2).alignment = { horizontal:'center' };
-      r.getCell(2).numFmt = '#,##0';
-      if(i===3){ // Total row con fondo
-        for(let c=1;c<=14;c++) r.getCell(c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF1F5F9'} };
-      }
-      row++;
-    });
-    // Data bars desactivadas (bug en ExcelJS 4.4.0 al serializar databar XML).
-    // El reporte se ve igual de profesional; para gráficos editables se usa
-    // Insertar > Gráficos > Recomendados directamente en Excel.
-    const addDataBar = (ref, argbColor) => { /* no-op */ };
-    addDataBar(`B${paresStart}:B${paresStart+2}`, 'FF6366F1');
-    row++; // espacio
-
-    // ── 📣 MÉTRICAS DE PUBLICIDAD (10 KPIs) ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    h = ws.getCell(`A${row}`);
-    h.value = '📣  MÉTRICAS DE PUBLICIDAD';
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    ['Métrica','Valor'].forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'} };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF6366F1'} };
-      cell.alignment = { horizontal:i===0?'left':'center' };
-    });
-    ws.mergeCells(`B${row}:${COL_END}${row}`);
-    row++;
-    const cpConv = publi.mensajesTotal>0 ? (publi.gastoTotal / publi.mensajesTotal) : 0;
-    const bloquePub = [
-      ['Chats / Mensajes recibidos', publi.mensajesTotal, 'FF3B82F6'],
-      ['Ventas confirmadas (pares entregados)', ventasConfirmadas, 'FF10B981'],
-      ['Correlación Chats → Ventas confirmadas', correlacion.toFixed(2)+'%', 'FF7C3AED'],
-      ['Gasto total invertido en publicidad', fmtMoney(publi.gastoTotal), 'FFEF4444'],
-      ['$/Conversación (Gasto / Mensajes)', cpConv>0?fmtMoney(cpConv):'—', 'FFEF4444'],
-      ['Costo promedio por venta confirmada', costoPorVenta>0?fmtMoney(costoPorVenta):'—', 'FFEF4444'],
-      ['Venta entregada (ingreso entregados)', fmtMoney(publi.ventaEntTotal), 'FF10B981'],
-      ['Venta en ruta (ingreso en tránsito)', fmtMoney(publi.ventaRutaTotal), 'FF3B82F6'],
-      ['Utilidad entregada (venta − costo − gasto)', fmtMoney(publi.utilidadTotal), publi.utilidadTotal>=0?'FF10B981':'FFEF4444'],
-      ['ROAS entregado (venta entregada / gasto)', publi.roasTotal>0?publi.roasTotal.toFixed(2)+'x':'—', publi.roasTotal>=2?'FF10B981':publi.roasTotal>=1?'FFF59E0B':'FFEF4444']
-    ];
-    bloquePub.forEach(rowData => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = rowData[0];
-      r.getCell(2).value = rowData[1];
-      r.getCell(2).font = { bold:true, color:{argb:rowData[2]}, size:12 };
-      r.getCell(2).alignment = { horizontal:'center' };
-      row++;
-    });
-    row++; // espacio
-
-    // ── 🎯 CAMPAÑAS DE PUBLICIDAD (réplica de la tabla de la app) ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    h = ws.getCell(`A${row}`);
-    h.value = `🎯  CAMPAÑAS DE PUBLICIDAD POR VENDEDOR  (fuente: ${publi.fuente})`;
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    const campHdr = ['Vendedor / Campaña','Estado','Antig.','Gasto','Presup. diario','Mensajes','$/Conv','CTR','CPM','CPC','Venta entreg.','Venta en ruta','Utilidad','ROAS entreg.'];
-    campHdr.forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E1B4B'} };
-      cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
-    });
-    ws.getRow(row).height = 28;
-    row++;
-    const campStart = row;
-    publi.campañas.forEach(c => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = c.nombre;
-      r.getCell(2).value = c.estado;
-      r.getCell(3).value = c.antiguedadDias>0 ? c.antiguedadDias+' d' : '—';
-      r.getCell(4).value = c.gasto;
-      r.getCell(5).value = c.presupuestoDiario>0 ? c.presupuestoDiario : '—';
-      r.getCell(6).value = c.mensajes;
-      r.getCell(7).value = c.cpconv>0 ? Math.round(c.cpconv) : '—';
-      r.getCell(8).value = c.ctr>0 ? (c.ctr.toFixed(2)+'%') : '—';
-      r.getCell(9).value = c.cpm>0 ? Math.round(c.cpm) : '—';
-      r.getCell(10).value = c.cpc>0 ? Math.round(c.cpc) : '—';
-      r.getCell(11).value = c.ventaEntregada;
-      r.getCell(12).value = c.ventaEnRuta;
-      r.getCell(13).value = c.utilidad;
-      r.getCell(14).value = c.roasEntregado>0 ? (c.roasEntregado.toFixed(2)+'x') : '—';
-      // Formato moneda
-      [4,5,7,9,10,11,12,13].forEach(col => {
-        const cell = r.getCell(col);
-        if(typeof cell.value === 'number') cell.numFmt = '"$"#,##0';
-      });
-      r.getCell(6).numFmt = '#,##0';
-      // Color utilidad
-      if(typeof r.getCell(13).value === 'number'){
-        r.getCell(13).font = { bold:true, color:{ argb: r.getCell(13).value >= 0 ? 'FF10B981' : 'FFEF4444' } };
-      }
-      // Color estado
-      const est = _normTxt(c.estado);
-      if(est==='ACTIVA' || est==='ACTIVE') r.getCell(2).font = { bold:true, color:{argb:'FF10B981'} };
-      else if(est==='PAUSADA' || est==='PAUSED') r.getCell(2).font = { bold:true, color:{argb:'FFF59E0B'} };
-      // Centrar
-      [2,3,6,7,8,9,10,14].forEach(col => { r.getCell(col).alignment = { horizontal:'center' }; });
-      row++;
-    });
-    if(publi.campañas.length){
-      // Fila TOTAL
-      const r = ws.getRow(row);
-      r.getCell(1).value = 'TOTAL';
-      r.getCell(4).value = publi.gastoTotal;
-      r.getCell(6).value = publi.mensajesTotal;
-      r.getCell(7).value = publi.mensajesTotal>0 ? Math.round(publi.gastoTotal/publi.mensajesTotal) : '—';
-      r.getCell(11).value = publi.ventaEntTotal;
-      r.getCell(12).value = publi.ventaRutaTotal;
-      r.getCell(13).value = publi.utilidadTotal;
-      r.getCell(14).value = publi.roasTotal>0 ? (publi.roasTotal.toFixed(2)+'x') : '—';
-      for(let c=1;c<=14;c++){
-        const cell = r.getCell(c);
-        cell.font = Object.assign({ bold:true }, cell.font||{});
-        cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-      }
-      [4,7,11,12,13].forEach(col => { r.getCell(col).numFmt = '"$"#,##0'; });
-      r.getCell(13).font = { bold:true, color:{ argb: publi.utilidadTotal >= 0 ? 'FF10B981' : 'FFEF4444' } };
-      [2,3,6,7,8,9,10,14].forEach(col => { r.getCell(col).alignment = { horizontal:'center' }; });
-      row++;
-      // Data bars sobre gasto, ventaEnt, utilidad (las columnas más importantes)
-      const lastDataRow = row-2; // excluye fila TOTAL
-      addDataBar(`D${campStart}:D${lastDataRow}`, 'FF7C3AED');
-      addDataBar(`K${campStart}:K${lastDataRow}`, 'FF10B981');
-      addDataBar(`M${campStart}:M${lastDataRow}`, 'FF3B82F6');
-    } else {
-      ws.mergeCells(`A${row}:${COL_END}${row}`);
-      ws.getCell(`A${row}`).value = `Sin campañas encontradas para "${(user.nombre||'').split(' ')[0]}" ni en titanbotas/publicidad/historico (rango ${rango.inicioIso} → ${rango.finIso}) ni en titanbotas/publicidad/snapshot.rangos. Verifica que: (1) n8n esté escribiendo datos, (2) el primer nombre del usuario coincida con el primer nombre en las filas de "vendedores[]" del snapshot.`;
-      ws.getCell(`A${row}`).font = { italic:true, color:{argb:'FF64748B'} };
-      row++;
-    }
-    row++; // espacio
-
-    // ── 📅 DETALLE DIARIO ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    h = ws.getCell(`A${row}`);
-    h.value = '📅  PUBLICIDAD — DETALLE POR DÍA';
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    const diaHdr = ['Fecha','Gasto','Mensajes','$/Conv','CTR','CPM','CPC','Venta entreg.','Venta en ruta'];
-    diaHdr.forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'} };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E1B4B'} };
-      cell.alignment = { horizontal:'center' };
-    });
-    row++;
-    const diaStart = row;
-    publi.detalleDias.forEach(d => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = d.fecha;
-      r.getCell(2).value = d.gasto;
-      r.getCell(3).value = d.mensajes;
-      r.getCell(4).value = d.mensajes>0?Math.round(d.gasto/d.mensajes):0;
-      r.getCell(5).value = '';
-      r.getCell(6).value = '';
-      r.getCell(7).value = '';
-      r.getCell(8).value = d.ventaEntregada;
-      r.getCell(9).value = d.ventaEnRuta;
-      [2,4,8,9].forEach(col => { r.getCell(col).numFmt = '"$"#,##0'; });
-      r.getCell(3).numFmt = '#,##0';
-      [1,3,5,6,7].forEach(col => { r.getCell(col).alignment = { horizontal:'center' }; });
-      row++;
-    });
-    if(publi.detalleDias.length){
-      const r = ws.getRow(row);
-      r.getCell(1).value = 'TOTAL';
-      r.getCell(2).value = publi.gastoTotal;
-      r.getCell(3).value = publi.mensajesTotal;
-      r.getCell(4).value = publi.mensajesTotal>0?Math.round(publi.gastoTotal/publi.mensajesTotal):0;
-      r.getCell(8).value = publi.ventaEntTotal;
-      r.getCell(9).value = publi.ventaRutaTotal;
-      for(let c=1;c<=9;c++){ r.getCell(c).font = { bold:true }; r.getCell(c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} }; }
-      [2,4,8,9].forEach(col => { r.getCell(col).numFmt = '"$"#,##0'; });
-      r.getCell(3).numFmt = '#,##0';
-      row++;
-      const lastDayRow = row-2;
-      addDataBar(`B${diaStart}:B${lastDayRow}`, 'FF7C3AED');
-      addDataBar(`C${diaStart}:C${lastDayRow}`, 'FF3B82F6');
-    } else {
-      ws.mergeCells(`A${row}:${COL_END}${row}`);
-      ws.getCell(`A${row}`).value = publi.gastoTotal>0
-        ? `El desglose día por día no está disponible (fuente actual: ${publi.fuente}). Los totales sí están arriba en la sección Campañas. Para que aparezca el detalle diario, n8n debe escribir en titanbotas/publicidad/historico/{YYYY-MM-DD}.`
-        : `Sin datos de publicidad para este vendedor en el rango.`;
-      ws.getCell(`A${row}`).font = { italic:true, color:{argb:'FF64748B'} };
-      row++;
-    }
-    row++; // espacio
-
-    // ── 🛒 PEDIDOS DEL PERIODO ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    h = ws.getCell(`A${row}`);
-    h.value = '🛒  PEDIDOS DEL PERIODO  (columna "Pares PROMOCIÓNES" no cuenta en los totales)';
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    const pedHdr = ['Fecha','Pedido #','Cliente','Ciudad','Productos','Pares contables','Pares PROMOC.','Categoría','Est. ped.','Est. guía','Precio'];
-    pedHdr.forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E1B4B'} };
-      cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
-    });
-    ws.getRow(row).height = 28;
-    row++;
-    pares.detalle.sort((a,b) => (a.fecha||'').localeCompare(b.fecha||'')).forEach(p => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = p.fecha;
-      r.getCell(2).value = p.pedidoId;
-      r.getCell(3).value = p.cliente;
-      r.getCell(4).value = p.ciudad;
-      r.getCell(5).value = p.productos;
-      r.getCell(6).value = p.paresContables;
-      r.getCell(7).value = p.paresPromo;
-      r.getCell(8).value = p.categoria;
-      r.getCell(9).value = p.estadoPed;
-      r.getCell(10).value = p.estadoGuia;
-      r.getCell(11).value = p.precio;
-      r.getCell(11).numFmt = '"$"#,##0';
-      [1,2,6,7,8,9,10].forEach(col => { r.getCell(col).alignment = { horizontal:'center' }; });
-      if(p.categoria==='confirmado') r.getCell(8).font = { bold:true, color:{argb:'FF10B981'} };
-      else if(p.categoria==='viajando') r.getCell(8).font = { bold:true, color:{argb:'FF3B82F6'} };
-      else if(p.categoria==='por_confirmar') r.getCell(8).font = { bold:true, color:{argb:'FFF59E0B'} };
-      if(p.paresPromo > 0) r.getCell(7).font = { bold:true, color:{argb:'FFEF4444'} };
-      row++;
-    });
-    if(!pares.detalle.length){
-      ws.mergeCells(`A${row}:${COL_END}${row}`);
-      ws.getCell(`A${row}`).value = 'Sin pedidos en este rango';
-      ws.getCell(`A${row}`).font = { italic:true, color:{argb:'FF64748B'} };
-      row++;
-    }
-    row++; row++; // espacio
-
-    // ── 💡 NOTA FINAL ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    const nota = ws.getCell(`A${row}`);
-    nota.value = '💡  Todos los valores son editables. Para crear un gráfico nativo de Excel que se actualice automáticamente al cambiar los datos: selecciona el rango de cualquier tabla (por ejemplo, las columnas "Vendedor / Campaña" y "Gasto" de la sección Campañas) y usa el menú Insertar > Gráficos > Recomendados. Excel sugerirá el tipo de gráfico ideal para esos datos.';
-    nota.font = { italic:true, color:{argb:'FF475569'}, size:10 };
-    nota.alignment = { wrapText:true, vertical:'middle' };
-    nota.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFEF3C7'} };
-    nota.border = { top:{style:'thin', color:{argb:'FFF59E0B'}}, bottom:{style:'thin', color:{argb:'FFF59E0B'}}, left:{style:'thin', color:{argb:'FFF59E0B'}}, right:{style:'thin', color:{argb:'FFF59E0B'}} };
-    ws.getRow(row).height = 48;
-
-    // ── Descargar ──
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `reporte-${user.nombre.replace(/\s+/g,'_')}-${rango.inicioIso}_a_${rango.finIso}.xlsx`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('Excel descargado ✅');
-  } catch(err){
-    console.error('exportarExcelColaborador falló:', err);
-    const msg = (err && (err.message || err.toString())) || 'desconocido';
-    toast('Error: ' + msg.slice(0,140));
-  }
 }
 
 // ════════════════════════════════════════
