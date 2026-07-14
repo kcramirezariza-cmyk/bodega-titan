@@ -1920,24 +1920,46 @@ const getGuias   = () => localGuias;
 const getCompras = () => localCompras;
 
 // ── Data writers (optimistic update: actualiza la UI inmediatamente, luego sincroniza Firebase) ──
+// Antes, si la escritura a Firebase fallaba (sin conexión, permisos, payload
+// inválido, etc.) el error se perdía en silencio: la UI local ya mostraba el
+// cambio como guardado y cerraba el modal, pero como el servidor nunca lo
+// recibió, ningún colaborador veía la actualización — parecía que "guardar"
+// no hacía nada. fbCommit revierte el cambio optimista y avisa con un toast
+// visible cuando la escritura real al servidor no se pudo confirmar.
+function fbCommit(promise, revertFn, entityLabel){
+  if(!promise || typeof promise.catch!=='function') return;
+  promise.catch(err=>{
+    console.error(`Error al guardar ${entityLabel} en Firebase:`, err);
+    revertFn();
+    refreshPage(); updateBadges();
+    toast(`⚠ No se pudo guardar ${entityLabel} en el servidor (${err?.message||'sin conexión'}). Los cambios NO se sincronizaron — intenta de nuevo.`, 7000);
+  });
+}
 function writeProd(prod) {
   const i=localProds.findIndex(p=>p.id===prod.id);
+  const prevSnapshot=i>=0?localProds[i]:null;
   if(i>=0) localProds[i]=prod; else localProds.push(prod);
   refreshPage(); updateBadges();
-  if (USE_FIREBASE) REF.prods.child(prod.id).set(prod);
-  else lsSet('prods',localProds);
+  if (USE_FIREBASE) {
+    fbCommit(REF.prods.child(prod.id).set(prod), ()=>{
+      const j=localProds.findIndex(p=>p.id===prod.id);
+      if(prevSnapshot){ if(j>=0) localProds[j]=prevSnapshot; }
+      else { localProds=localProds.filter(p=>p.id!==prod.id); }
+    }, 'el producto');
+  } else lsSet('prods',localProds);
 }
 function removeProd(id) {
+  const prevProds=localProds;
   localProds=localProds.filter(p=>p.id!==id);
   refreshPage(); updateBadges();
-  if (USE_FIREBASE) REF.prods.child(id).remove();
+  if (USE_FIREBASE) fbCommit(REF.prods.child(id).remove(), ()=>{ localProds=prevProds; }, 'la eliminación del producto');
   else lsSet('prods',localProds);
 }
 function writeMovement(mov) {
   localMovs.push(mov);
   localMovs.sort((a,b)=>(a.ts||0)-(b.ts||0));
   refreshPage(); updateBadges();
-  if (USE_FIREBASE) REF.movs.child(mov.id).set(mov);
+  if (USE_FIREBASE) fbCommit(REF.movs.child(mov.id).set(mov), ()=>{ localMovs=localMovs.filter(m=>m.id!==mov.id); }, 'el movimiento');
   else lsSet('movs',localMovs);
 }
 // Deja constancia (best-effort, no bloqueante) de intentos de pedido
@@ -1956,44 +1978,70 @@ function registrarAlertaStock(motivo, detalle){
 }
 function writeUser(user) {
   const i=localUsers.findIndex(u=>u.id===user.id);
+  const prevSnapshot=i>=0?localUsers[i]:null;
   if(i>=0) localUsers[i]=user; else localUsers.push(user);
   if(currentPage==='usuarios') renderUsuarios();
-  if (USE_FIREBASE) REF.users.child(user.id).set(user);
-  else lsSet('users',localUsers);
+  if (USE_FIREBASE) {
+    fbCommit(REF.users.child(user.id).set(user), ()=>{
+      const j=localUsers.findIndex(u=>u.id===user.id);
+      if(prevSnapshot){ if(j>=0) localUsers[j]=prevSnapshot; }
+      else { localUsers=localUsers.filter(u=>u.id!==user.id); }
+      if(currentPage==='usuarios') renderUsuarios();
+    }, 'el usuario');
+  } else lsSet('users',localUsers);
 }
 function removeUser(id) {
+  const prevUsers=localUsers;
   localUsers=localUsers.filter(u=>u.id!==id);
   if(currentPage==='usuarios') renderUsuarios();
-  if (USE_FIREBASE) REF.users.child(id).remove();
+  if (USE_FIREBASE) fbCommit(REF.users.child(id).remove(), ()=>{ localUsers=prevUsers; if(currentPage==='usuarios') renderUsuarios(); }, 'la eliminación del usuario');
   else lsSet('users',localUsers);
 }
 function writePedido(ped) {
   const i=localPedidos.findIndex(p=>p.id===ped.id);
+  const prevSnapshot=i>=0?localPedidos[i]:null;
   if(i>=0) localPedidos[i]=ped; else localPedidos.unshift(ped);
   refreshPage(); updateBadges();
-  if (USE_FIREBASE) REF.pedidos.child(ped.id).set(ped);
+  if (USE_FIREBASE) fbCommit(REF.pedidos.child(ped.id).set(ped), ()=>{
+    const j=localPedidos.findIndex(p=>p.id===ped.id);
+    if(prevSnapshot){ if(j>=0) localPedidos[j]=prevSnapshot; }
+    else { localPedidos=localPedidos.filter(p=>p.id!==ped.id); }
+  }, 'el pedido');
 }
 function writeCompra(compra) {
   const i=localCompras.findIndex(c=>c.id===compra.id);
+  const prevSnapshot=i>=0?localCompras[i]:null;
   if(i>=0) localCompras[i]=compra; else localCompras.unshift(compra);
   refreshPage(); updateBadges();
-  if (USE_FIREBASE) REF.compras.child(compra.id).set(compra);
-  else lsSet('compras',localCompras);
+  if (USE_FIREBASE) {
+    fbCommit(REF.compras.child(compra.id).set(compra), ()=>{
+      const j=localCompras.findIndex(c=>c.id===compra.id);
+      if(prevSnapshot){ if(j>=0) localCompras[j]=prevSnapshot; }
+      else { localCompras=localCompras.filter(c=>c.id!==compra.id); }
+    }, 'la orden de compra');
+  } else lsSet('compras',localCompras);
 }
 function removeCompra(id) {
+  const prevCompras=localCompras;
   localCompras=localCompras.filter(c=>c.id!==id);
   refreshPage(); updateBadges();
-  if (USE_FIREBASE) REF.compras.child(id).remove();
+  if (USE_FIREBASE) fbCommit(REF.compras.child(id).remove(), ()=>{ localCompras=prevCompras; }, 'la eliminación de la orden de compra');
   else lsSet('compras',localCompras);
 }
 function writeGuia(guia) {
   const i=localGuias.findIndex(g=>g.id===guia.id);
+  const prevSnapshot=i>=0?localGuias[i]:null;
   if(i>=0) localGuias[i]=guia; else localGuias.push(guia);
   // Refrescamos la página actual para que el cambio (registro de guía, rastreo,
   // actualización de estado, etc.) se vea inmediatamente en Mis Pedidos,
   // Todos los Pedidos y Gestión de Guías.
   refreshPage();
-  if (USE_FIREBASE) REF.guias.child(guia.id).set(guia);
+  if (USE_FIREBASE) fbCommit(REF.guias.child(guia.id).set(guia), ()=>{
+    const j=localGuias.findIndex(g=>g.id===guia.id);
+    if(prevSnapshot){ if(j>=0) localGuias[j]=prevSnapshot; }
+    else { localGuias=localGuias.filter(g=>g.id!==guia.id); }
+    refreshPage();
+  }, 'la guía');
 }
 
 // ════════════════════════════════════════
@@ -2221,8 +2269,8 @@ function logAuditoria(accion, detalles={}) {
   console.log('[AUDITORÍA]', registro);
 
   // Guardar en Firebase si está disponible
-  if(USE_FIREBASE && fbReady){
-    const auditRef=database.ref('auditoria').push();
+  if(USE_FIREBASE && fbReady && db){
+    const auditRef=db.ref('auditoria').push();
     auditRef.set(registro).catch(e=>console.warn('[AUDITORÍA] Error guardar en Firebase:', e));
   } else {
     // Guardar en localStorage
@@ -2233,36 +2281,45 @@ function logAuditoria(accion, detalles={}) {
   }
 }
 
-// Interceptar funciones críticas para auditoría
+// Interceptar funciones críticas para auditoría.
+// La auditoría es de mejor esfuerzo y nunca debe bloquear el guardado real:
+// si logAuditoria lanza un error, se ignora (solo se registra en consola) y
+// la función original se ejecuta igual.
 const originalWriteProd=writeProd;
 writeProd=function(prod){
-  logAuditoria('Modificar Producto', {
-    productoId: prod.id,
-    nombre: prod.nombre,
-    cambios: 'Se modificó el producto'
-  });
+  try{
+    logAuditoria('Modificar Producto', {
+      productoId: prod.id,
+      nombre: prod.nombre,
+      cambios: 'Se modificó el producto'
+    });
+  }catch(e){ console.warn('[AUDITORÍA] No se pudo registrar:', e); }
   return originalWriteProd.call(this, prod);
 };
 
 const originalWriteUser=writeUser;
 writeUser=function(user){
-  logAuditoria('Modificar Usuario', {
-    usuarioId: user.id,
-    nombre: user.nombre,
-    rol: user.rol,
-    cambios: 'Se modificó el usuario'
-  });
+  try{
+    logAuditoria('Modificar Usuario', {
+      usuarioId: user.id,
+      nombre: user.nombre,
+      rol: user.rol,
+      cambios: 'Se modificó el usuario'
+    });
+  }catch(e){ console.warn('[AUDITORÍA] No se pudo registrar:', e); }
   return originalWriteUser.call(this, user);
 };
 
 const originalRemoveUser=removeUser;
 removeUser=function(id){
-  const u=getUsers().find(x=>x.id===id);
-  logAuditoria('Eliminar Usuario', {
-    usuarioId: id,
-    nombre: u?.nombre||'Desconocido',
-    cambios: 'Usuario eliminado'
-  });
+  try{
+    const u=getUsers().find(x=>x.id===id);
+    logAuditoria('Eliminar Usuario', {
+      usuarioId: id,
+      nombre: u?.nombre||'Desconocido',
+      cambios: 'Usuario eliminado'
+    });
+  }catch(e){ console.warn('[AUDITORÍA] No se pudo registrar:', e); }
   return originalRemoveUser.call(this, id);
 };
 
