@@ -685,6 +685,9 @@ textarea{resize:vertical}
                 <label>Tipo de venta</label>
                 <div style="display:flex;gap:8px;flex-wrap:wrap" id="tipo-venta-btns">
                   <button type="button" class="btn btn-outline btn-sm tventa-btn active" onclick="setTipoVenta('individual',this)">PRODUCTO</button>
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('combo',this)">Combo</button>
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('trio',this)">Trío</button>
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('cuarteto',this)">Cuarteto</button>
                   <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('cambio',this)">Cambio</button>
                   <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('externa',this)">Bota Externa</button>
                 </div>
@@ -946,6 +949,9 @@ textarea{resize:vertical}
             <option value="en_devolucion">En devolución</option>
             <option value="cancelado">Cancelado</option>
           </select>
+          <button type="button" id="btn-filtro-backorder" onclick="toggleFiltroBackorder()" title="Ver solo pedidos con pares vendidos sin stock físico (por reponer)" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:7px 10px;border:1px solid #fca5a5;border-radius:8px;background:#fff;color:#dc2626;cursor:pointer;font-weight:600">
+            <i class="bi bi-exclamation-octagon-fill"></i> Por reponer <span id="badge-count-backorder" style="display:none;background:#dc2626;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700">0</span>
+          </button>
           <select id="filter-admin-vendedor" onchange="renderAdminPedidos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
             <option value="">Todos los vendedores</option>
           </select>
@@ -1802,6 +1808,15 @@ function bloquearYRecargar(clave){
 
 // ── Vía 2: versión anunciada en Firebase (red de seguridad) ───────────────
 function iniciarControlDeVersion(){
+  // Vista previa LOCAL (file://): no participa del handshake de versión. No se
+  // bloquea por una versión de producción más nueva NI publica su versión a
+  // Firebase (lo que forzaría a recargar a los usuarios reales). En producción
+  // el sitio corre por https:// (GitHub Pages), así que el comportamiento real
+  // queda idéntico.
+  if(location.protocol==='file:'){
+    console.log('[VERSIÓN] Modo local file:// — guardián de versión desactivado (solo vista previa).');
+    return;
+  }
   vigilarArchivoPublicado();
   if(!firebaseInitOk || !REF.version) return;
   REF.version.on('value', snap=>{
@@ -3702,9 +3717,57 @@ function confirmarEntregaItemCompra(compraId, idx){
     c.tsActualizado=Date.now();
     writeCompra(c);
     writeMovement({id:uid(),tipo:'entrada',subtipo:'compra',fecha:hoy(),productoId:it.pid,varianteId:it.vid,cantidad:qty,referencia:`Compra ${c.referencia||('#'+c.id.slice(-6))} — ${c.proveedor}`,notas:'Entrega de orden de compra',usuario:CU?.nombre||'',ts:Date.now()});
-    toast(`+${qty} unidades recibidas: ${it.productoNombre} T${it.talla}/${it.color}`);
+    // ── Liberación de BACKORDERS por prioridad (quien pidió primero) ──────
+    // Las unidades que acaban de entrar cubren, en orden de llegada del pedido,
+    // los pares que se vendieron sin stock físico de esta misma variante.
+    const cubiertos=liberarBackordersPorEntrega(it.pid, it.vid, qty);
+    if(cubiertos>0){
+      toast(`+${qty} recibidas: ${it.productoNombre} T${it.talla}/${it.color}. Se cubrieron ${cubiertos} par(es) que estaban por reponer.`, 6000);
+    } else {
+      toast(`+${qty} unidades recibidas: ${it.productoNombre} T${it.talla}/${it.color}`);
+    }
     verFacturaCompra(compraId);
   });
+}
+
+// Cubre los pedidos en backorder (vendidos sin stock físico) de una variante,
+// dando PRIORIDAD al que pidió primero (menor ts). `qtyRecibida` son las
+// unidades que acaban de entrar. Devuelve cuántos pares de backorder se
+// cubrieron. Cuando todos los ítems de un pedido quedan cubiertos, se le quita
+// la marca de backorder para que deje de figurar como "por reponer".
+function liberarBackordersPorEntrega(pid, vid, qtyRecibida){
+  let disponibles=qtyRecibida;
+  if(disponibles<=0) return 0;
+  // Pedidos con backorder pendiente de ESTA variante, del más antiguo al más nuevo.
+  const enEspera=getPedidos()
+    .filter(p=>p.backorderPendiente && Array.isArray(p.items) &&
+      p.items.some(it=>it.vid===vid && it.backorder && (it.faltante||0)>0))
+    .sort((a,b)=>(a.ts||0)-(b.ts||0));
+  let cubiertosTotal=0;
+  for(const ped of enEspera){
+    if(disponibles<=0) break;
+    let cambiado=false;
+    for(const it of ped.items){
+      if(disponibles<=0) break;
+      if(it.vid!==vid || !it.backorder || (it.faltante||0)<=0) continue;
+      const cubre=Math.min(it.faltante, disponibles);
+      it.faltante-=cubre;
+      disponibles-=cubre;
+      cubiertosTotal+=cubre;
+      cambiado=true;
+      if(it.faltante<=0){ it.faltante=0; it.backorder=false; }
+    }
+    if(cambiado){
+      // ¿Al pedido ya no le queda ningún ítem por reponer? → deja de ser backorder.
+      const siguePendiente=ped.items.some(x=>x.backorder && (x.faltante||0)>0);
+      ped.backorderPendiente=siguePendiente;
+      if(!siguePendiente){
+        registrarAlertaStock('Backorder cubierto', `Pedido #${ped.id.slice(-6)} de ${ped.vendedorNombre||''}: ya tiene stock físico completo`);
+      }
+      writePedido(ped);
+    }
+  }
+  return cubiertosTotal;
 }
 
 // ════════════════════════════════════════
@@ -4411,7 +4474,7 @@ function renderUsuarios(){
     const isMe=u.id===CU?.id;
     const reporteCell = esAdmin
       ? (u.rol==='vendedor'
-          ? `<td><button class="btn btn-sm" style="background:#10b981;color:#fff;font-weight:600;padding:6px 10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:4px" onclick="exportarExcelColaborador('${u.id}')" title="Descargar Excel del colaborador (corte 27 a 27)"><i class="bi bi-file-earmark-excel-fill"></i> Excel</button></td>`
+          ? `<td><button class="btn btn-sm" style="background:#10b981;color:#fff;font-weight:600;padding:6px 10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:4px" onclick="exportarExcelColaborador('${u.id}')" title="Descargar hoja de cálculo del vendedor (corte 28 a 27)"><i class="bi bi-file-earmark-excel-fill"></i> Excel</button></td>`
           : `<td style="color:var(--muted);font-size:12px">—</td>`)
       : '';
     html+=`<tr><td><strong>${u.nombre}</strong>${isMe?' <span class="badge badge-info">Tú</span>':''}</td><td style="font-family:monospace;font-size:12px">${u.username}</td><td>${u.rol==='admin'?'<span class="badge badge-purple">Administrador</span>':u.rol==='vendedor'?'<span class="badge badge-info">Vendedor</span>':'<span class="badge badge-gray">Operador</span>'}</td><td>${u.activo?'<span class="badge badge-success">Activo</span>':'<span class="badge badge-danger">Inactivo</span>'}</td>${reporteCell}<td><div style="display:flex;gap:4px"><button class="btn-icon" onclick="abrirModalUsuario('${u.id}')" title="Editar"><i class="bi bi-pencil-fill"></i></button>${!isMe?`<button class="btn-icon" onclick="toggleUser('${u.id}')" title="${u.activo?'Desactivar':'Activar'}"><i class="bi bi-${u.activo?'lock-fill':'unlock-fill'}"></i></button>`:''}${!isMe?`<button class="btn-icon" style="color:var(--danger)" onclick="pedirEliminarUser('${u.id}')" title="Eliminar"><i class="bi bi-trash-fill"></i></button>`:''}</div></td></tr>`;
@@ -4913,13 +4976,20 @@ function selPares(n,btn){
 // ── Carrito de compras ─────────────────────
 let carrito=[];
 
-// ── Tipo de venta: individual / combo (2) / trío (3) ──────────────────
-// En combo/trío el precio se define UNA sola vez para todo el grupo (no por
-// ítem). Eso deja el dato limpio: revenue = comboPrecio, costo = suma de los
-// costos de cada componente. Sin trucos de $1 ni descuentos manuales.
+// ── Tipo de venta: individual / combo (N libre) / trío (3) / cuarteto (4) ──
+// En combo/trío/cuarteto el precio se define UNA sola vez para todo el grupo
+// (no por ítem). Eso deja el dato limpio: revenue = comboPrecio, costo = suma
+// de los costos de cada componente. Sin trucos de $1 ni descuentos manuales.
+// Combo = número de productos LIBRE (mínimo 2). Trío = 3 fijo. Cuarteto = 4 fijo.
 let tipoVenta='individual';
 let comboPrecio=0;
-const COMBO_N={individual:0,combo:2,trio:3};
+const COMBO_N={individual:0,combo:2,trio:3,cuarteto:4};
+// Etiqueta visible por tipo de grupo (para badges y textos).
+const GRUPO_LABEL={combo:'COMBO',trio:'TRÍO',cuarteto:'CUARTETO'};
+// ¿Es una venta de grupo con un precio general único? (combo/trío/cuarteto)
+const esVentaGrupo=(t)=>t==='combo'||t==='trio'||t==='cuarteto';
+// ¿El grupo tiene un número FIJO de productos? (trío=3, cuarteto=4; combo es libre)
+const esGrupoFijo=(t)=>t==='trio'||t==='cuarteto';
 // Validación de guía para pedidos tipo CAMBIO. Solo se pone en true
 // cuando trackClientSide() confirma que el paquete está entregado en Cúcuta.
 let cambioGuiaValida=false;
@@ -5006,6 +5076,9 @@ function setTipoVenta(t,btn){
     // marcamos en el pedido para identificarlo en reportes y tablas.
     if(hint){hint.style.display='block';hint.textContent='Cambio: descuenta stock como un pedido normal. Ingresa el precio del envío (o el valor que aplique).';}
     if(precioG) precioG.style.display='block';
+  } else if(t==='combo'){
+    if(hint){hint.style.display='block';hint.textContent='Combo: agrega los productos que quieras (mínimo 2) y pon UN precio general abajo, en el carrito.';}
+    if(precioG) precioG.style.display='none';
   } else {
     const n=COMBO_N[t];
     if(hint){hint.style.display='block';hint.textContent=`Agrega los ${n} productos del ${t}. El precio se pone una sola vez abajo, en el carrito.`;}
@@ -5089,9 +5162,14 @@ function agregarAlCarrito(){
   const v=p?.variantes.find(x=>x.id===vid);
   if(!v){return;}
   const disponible = getStockDisponible(p, v);
-  if(disponible<=0){toast('Sin stock disponible para esta variante');return;}
   const cantidad=paresSeleccionados||1;
-  if(cantidad>disponible){toast(`Solo hay ${disponible} unidad(es) disponibles de esta variante (solicitaste ${cantidad})`);return;}
+  // BACKORDER: ya NO se bloquea por falta de stock. Si se piden más pares de los
+  // disponibles, la diferencia se venderá "sin stock físico" (el stock quedará
+  // en negativo al registrar) y se avisa al colaborador.
+  const faltanteCart = Math.max(0, cantidad - Math.max(0, disponible));
+  if(faltanteCart>0){
+    toast(`⚠️ ${faltanteCart} par(es) de ${p.nombre} T${v.talla}/${v.color} se venderán SIN stock físico (por reponer). Bodega los entrega cuando llegue mercancía.`, 5000);
+  }
   // En combo/trío el precio se define una sola vez para el grupo; en
   // individual se exige por ítem como siempre.
   let precio;
@@ -5099,9 +5177,12 @@ function agregarAlCarrito(){
     precio=parseFloat(document.getElementById('cart-precio').value)||0;
     if(!precio){toast('Ingresa el precio de venta');return;}
   } else {
-    const max=COMBO_N[tipoVenta];
-    if(carrito.length>=max){toast(`Un ${tipoVenta} lleva ${max} productos. Ya están agregados.`);return;}
-    precio=v.precio||0; // precio de referencia; el total va en el precio del combo
+    // Combo: número de productos LIBRE (mínimo 2). Trío: 3 fijo. Cuarteto: 4 fijo.
+    if(esGrupoFijo(tipoVenta)){
+      const max=COMBO_N[tipoVenta];
+      if(carrito.length>=max){toast(`Un ${tipoVenta} lleva ${max} productos. Ya están agregados.`);return;}
+    }
+    precio=v.precio||0; // precio de referencia; el total va en el precio del grupo
   }
   const esIndivOCambio=tipoVenta==='individual'||tipoVenta==='cambio';
   // Ya no se "aparta" stock entre dispositivos (eliminado el hold de 5 min por
@@ -5117,6 +5198,8 @@ function agregarAlCarrito(){
     precioRegistrado:v.precio||0,
     precioBajo:tipoVenta==='individual'&&!!(v.precio&&precio<v.precio),
     precioAlto:esIndivOCambio&&!!(v.precio&&precio>v.precio),
+    sinStock: faltanteCart>0,
+    faltanteCart,
     bodegaAlMomento: p.bodega || ''
   });
   renderCarrito();
@@ -5161,8 +5244,9 @@ function renderCarrito(){
 
     const disponible = getStockDisponible(p, v);
     if(disponible < item.cantidad) {
-      htmlAlertasStock += `<div style="background:#fee2e2;border:1px solid #ef4444;border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px;color:#991b1b">
-        <i class="bi bi-exclamation-triangle-fill"></i> <strong>${item.productoNombre} T${item.talla}/${item.color}:</strong> Disponible ${disponible}, solicitado ${item.cantidad}. Otros colaboradores pueden haber agregado stock al carrito.
+      const falt = item.cantidad - Math.max(0, disponible);
+      htmlAlertasStock += `<div style="background:#fef2f2;border:1px solid #dc2626;border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px;color:#991b1b">
+        <i class="bi bi-exclamation-octagon-fill"></i> <strong>${item.productoNombre} T${item.talla}/${item.color}:</strong> ${falt} par(es) se venderán SIN stock físico (por reponer). Se entregarán cuando el proveedor reponga, con prioridad por orden del pedido.
       </div>`;
     }
   });
@@ -5191,15 +5275,22 @@ function renderCarrito(){
       </button>
     </div>`;
   }).join('');
-  // ── Estado del modo combo/trío ────────────────────────────────────
+  // ── Estado del modo combo / trío / cuarteto ───────────────────────
   const comboG=document.getElementById('combo-precio-g');
   const badge=document.getElementById('carrito-combo-badge');
-  if(tipoVenta==='combo'||tipoVenta==='trio'){
-    const n=COMBO_N[tipoVenta];
+  if(esVentaGrupo(tipoVenta)){
     if(comboG) comboG.style.display='block';
     const tlabel=document.getElementById('combo-precio-tipo'); if(tlabel) tlabel.textContent=tipoVenta;
-    if(badge){badge.style.display='inline-flex';badge.textContent=(tipoVenta==='combo'?'COMBO':'TRÍO')+` ${carrito.length}/${n}`;}
-    if(carrito.length===n && comboPrecio>0){ unlockPedidoStep2(); } else { lockPedidoStep2(); }
+    if(esGrupoFijo(tipoVenta)){
+      // Trío: 3 fijo. Cuarteto: 4 fijo.
+      const n=COMBO_N[tipoVenta];
+      if(badge){badge.style.display='inline-flex';badge.textContent=`${GRUPO_LABEL[tipoVenta]} ${carrito.length}/${n}`;}
+      if(carrito.length===n && comboPrecio>0){ unlockPedidoStep2(); } else { lockPedidoStep2(); }
+    } else {
+      // Combo: número LIBRE de productos (mínimo 2), un precio general.
+      if(badge){badge.style.display='inline-flex';badge.textContent=`COMBO ${carrito.length} producto${carrito.length===1?'':'s'}`;}
+      if(carrito.length>=2 && comboPrecio>0){ unlockPedidoStep2(); } else { lockPedidoStep2(); }
+    }
   } else {
     if(comboG) comboG.style.display='none';
     if(badge){
@@ -5343,14 +5434,20 @@ async function validarDireccion(){
 // obsoletos de la caché local) y aborta si no alcanza. `callback(ok)` se
 // llama cuando termina (ok=false si algún producto no tenía stock suficiente
 // o falló la escritura — en ese caso NO se descontó nada de ese producto).
-function aplicarSalidaStockPedido(ped, callback){
+// opts.permitirNegativo → si es true, el stock PUEDE quedar negativo (venta sin
+// stock físico / backorder). Solo lo usa el registro de pedidos de colaborador.
+// El callback recibe (ok, info) donde info.backorderPorVid[vid] = déficit final
+// (unidades que quedaron vendidas sin respaldo físico) de esa variante.
+function aplicarSalidaStockPedido(ped, callback, opts){
+  const permitirNeg = !!(opts && opts.permitirNegativo);
+  const backorderPorVid={};
   if(escrituraBloqueada()){ callback(false); return; }
   const items=Array.isArray(ped.items)&&ped.items.length?ped.items
     :[{pid:ped.pid||ped.productoId,vid:ped.vid||ped.varianteId,cantidad:ped.cantidadPares||1,productoNombre:ped.productoNombre,talla:ped.talla,color:ped.color}];
   const itemsPorPid={};
   items.forEach(it=>{ (itemsPorPid[it.pid]=itemsPorPid[it.pid]||[]).push(it); });
   const pids=Object.keys(itemsPorPid);
-  if(!pids.length){ callback(true); return; }
+  if(!pids.length){ callback(true,{backorderPorVid}); return; }
 
   let pendientes=pids.length;
   let huboError=false;
@@ -5365,7 +5462,7 @@ function aplicarSalidaStockPedido(ped, callback){
     if(pendientes>0) return;
     if(!huboError){
       movimientosAEscribir.forEach(m=>writeMovement(m));
-      callback(true);
+      callback(true,{backorderPorVid});
       return;
     }
     // ── ROLLBACK ──────────────────────────────────────────────────────────
@@ -5419,8 +5516,11 @@ function aplicarSalidaStockPedido(ped, callback){
         if(!current) return current; // producto no existe: no tocar, se reportará como error
         for(const it of itemsDelProd){
           const v=(current.variantes||[]).find(x=>x.id===it.vid);
-          if(!v || (v.stockActual||0) < it.cantidad){
-            return undefined; // ABORTA la transacción: stock insuficiente o variante inexistente
+          if(!v) return undefined;               // variante inexistente SIEMPRE aborta
+          // Solo se aborta por stock insuficiente si NO se permite negativo.
+          // Con permitirNeg (venta sin stock) el stock puede quedar en negativo.
+          if(!permitirNeg && (v.stockActual||0) < it.cantidad){
+            return undefined; // ABORTA la transacción: stock insuficiente
           }
         }
         itemsDelProd.forEach(it=>{
@@ -5437,6 +5537,14 @@ function aplicarSalidaStockPedido(ped, callback){
           if(prodFinal){
             const i=localProds.findIndex(p=>p.id===pid);
             if(i>=0) localProds[i]=prodFinal; else localProds.push(prodFinal);
+            // Déficit final por variante = unidades vendidas sin respaldo físico.
+            if(permitirNeg){
+              itemsDelProd.forEach(it=>{
+                const vf=(prodFinal.variantes||[]).find(x=>x.id===it.vid);
+                const deficit=vf?Math.max(0,-(vf.stockActual||0)):0;
+                if(deficit>0) backorderPorVid[it.vid]=deficit;
+              });
+            }
           }
           comprometidos.push({pid, itemsDelProd}); // por si hay que revertir
           itemsDelProd.forEach(it=>{
@@ -5462,7 +5570,10 @@ function aplicarSalidaStockPedido(ped, callback){
         if(original){
           itemsDelProd.forEach(it=>{
             const v=original.variantes.find(x=>x.id===it.vid);
-            if(!v || (v.stockActual||0) < it.cantidad) stockOk=false;
+            // Variante inexistente siempre falla; stock insuficiente solo falla
+            // cuando NO se permite negativo (venta con backorder).
+            if(!v) stockOk=false;
+            else if(!permitirNeg && (v.stockActual||0) < it.cantidad) stockOk=false;
           });
         }
         if(!stockOk){ huboError=true; terminarSiListo(); return; }
@@ -5470,6 +5581,10 @@ function aplicarSalidaStockPedido(ped, callback){
         itemsDelProd.forEach(it=>{
           const v=pCopy.variantes.find(x=>x.id===it.vid);
           v.stockActual=(v.stockActual||0)-it.cantidad;
+          if(permitirNeg){
+            const deficit=Math.max(0,-(v.stockActual||0));
+            if(deficit>0) backorderPorVid[it.vid]=deficit;
+          }
         });
         writeProd(pCopy);
         comprometidos.push({pid, itemsDelProd}); // por si hay que revertir
@@ -5644,10 +5759,14 @@ function eliminarDuplicadosCancelados(pedNuevo){
 
 function registrarPedido(){
   if(!carrito.length){toast('Agrega al menos un producto al carrito');return;}
-  if(tipoVenta==='combo'||tipoVenta==='trio'){
+  if(esGrupoFijo(tipoVenta)){
     const n=COMBO_N[tipoVenta];
     if(carrito.length!==n){toast(`Un ${tipoVenta} debe tener exactamente ${n} productos.`);return;}
     if(!comboPrecio||comboPrecio<=0){toast('Ingresa el precio del '+tipoVenta);return;}
+  }
+  if(tipoVenta==='combo'){
+    if(carrito.length<2){toast('Un combo debe tener al menos 2 productos.');return;}
+    if(!comboPrecio||comboPrecio<=0){toast('Ingresa el precio del combo');return;}
   }
   if(tipoVenta==='cambio'){
     if(!cambioGuiaValida || !_cambioGuiaInfo){
@@ -5704,26 +5823,28 @@ function registrarPedido(){
   const necesarioPorVid={};
   carrito.forEach(it=>{ if(it.externa) return; necesarioPorVid[it.vid]=(necesarioPorVid[it.vid]||0)+it.cantidad; });
 
-  // VALIDACIÓN 1: Verificar disponibilidad
-  let erroresStock=[];
+  // VALIDACIÓN 1: la ÚNICA condición que bloquea es que la variante no exista.
+  // El stock insuficiente YA NO bloquea: se permite vender sin stock (backorder),
+  // el stock queda en negativo y el par se marca "por reponer". Aquí solo
+  // detectamos las variantes que van a quedar sin respaldo físico para avisar.
+  let erroresBloqueantes=[];
+  let avisosBackorder=[];
   for(const item of carrito){
     if(item.externa) continue;
     const p=getProds().find(x=>x.id===item.pid);
     const v=p?.variantes.find(x=>x.id===item.vid);
     const necesario=necesarioPorVid[item.vid];
     if(!v){
-      erroresStock.push(`${item.productoNombre}: variante no encontrada`);
+      erroresBloqueantes.push(`${item.productoNombre}: variante no encontrada`);
     } else if((v.stockActual||0)<necesario){
-      erroresStock.push(`${item.productoNombre} T${item.talla}/${item.color}: disponibles ${v.stockActual||0}, solicitados ${necesario}`);
+      avisosBackorder.push(`${item.productoNombre} T${item.talla}/${item.color}: se venderán ${necesario - Math.max(0,(v.stockActual||0))} par(es) sin stock físico`);
     }
   }
 
-  if(erroresStock.length){
-    const detalles=erroresStock.join('\n');
-    toast(`⚠️ STOCK INSUFICIENTE:\n\n${detalles}\n\nOtro colaborador puede haber registrado un pedido. Haz clic en "Actualizar" para sincronizar el inventario.`);
-    // Log para auditoría
-    console.warn('[PEDIDO RECHAZADO POR STOCK]',{carrito,erroresStock,timestamp:new Date().toISOString(),usuario:CU?.nombre});
-    registrarAlertaStock('Validación previa al registro', erroresStock.join(' · '));
+  if(erroresBloqueantes.length){
+    const detalles=erroresBloqueantes.join('\n');
+    toast(`⚠️ No se puede registrar:\n\n${detalles}\n\nActualiza el inventario e intenta de nuevo.`);
+    console.warn('[PEDIDO RECHAZADO - VARIANTE INEXISTENTE]',{carrito,erroresBloqueantes,timestamp:new Date().toISOString(),usuario:CU?.nombre});
     return;
   }
   const clienteInfo={
@@ -5762,8 +5883,8 @@ function registrarPedido(){
     talla:items[0].talla, color:items[0].color, sku:items[0].sku||'',
     cantidadPares:items.reduce((s,i)=>s+i.cantidad,0),
     tipoVenta,
-    comboPrecio: (tipoVenta==='combo'||tipoVenta==='trio') ? comboPrecio : 0,
-    precioVenta: (tipoVenta==='combo'||tipoVenta==='trio') ? comboPrecio : items.reduce((s,i)=>s+i.precioVenta*i.cantidad,0),
+    comboPrecio: esVentaGrupo(tipoVenta) ? comboPrecio : 0,
+    precioVenta: esVentaGrupo(tipoVenta) ? comboPrecio : items.reduce((s,i)=>s+i.precioVenta*i.cantidad,0),
     precioBajo:hayPrecioBajo, precioAlto:hayPrecioAlto,
     cliente:clienteInfo,
     formaPago,
@@ -5775,25 +5896,10 @@ function registrarPedido(){
     botaExterna: hayExterna
   };
 
-  // ═══ VALIDACIÓN FINAL ANTES DE DESCONTAR (Prevención de race conditions) ═══
-  // Una última verificación ultra-robusta para prevenir que dos pedidos simultáneos
-  // causen sobreventa. Si otro colaborador registró un pedido entre nuestra validación
-  // anterior y este momento, lo detectamos AQUÍ y cancelamos.
-  if(hayReal){
-    const prodsActuales=getProds();
-    for(const item of items){
-      if(item.externa) continue;
-      const pActual=prodsActuales.find(x=>x.id===item.pid);
-      const vActual=pActual?.variantes.find(x=>x.id===item.vid);
-      const stockActualizado=vActual?.stockActual||0;
-      if(stockActualizado<item.cantidad){
-        toast(`❌ ERROR CRÍTICO DE STOCK:\n${item.productoNombre} T${item.talla}/${item.color}\nStock actual: ${stockActualizado} · Solicitado: ${item.cantidad}\n\nEl inventario cambió hace segundos. Intenta de nuevo.`);
-        console.error('[PEDIDO BLOQUEADO - RACE CONDITION DETECTADA]',{item,stockActualizado,timestamp:new Date().toISOString()});
-        registrarAlertaStock('Race condition detectada (segunda validación)', `${item.productoNombre} T${item.talla}/${item.color}: stock ${stockActualizado}, solicitado ${item.cantidad}`);
-        return;
-      }
-    }
-  }
+  // NOTA: ya NO se bloquea el pedido por stock insuficiente. La transacción
+  // atómica de aplicarSalidaStockPedido (con permitirNegativo) descuenta las
+  // unidades aunque el stock quede en negativo; las que no tenían respaldo
+  // físico se marcan como backorder ("por reponer") más abajo, en el callback.
 
   // ── Descuento automático de stock (ATÓMICO) ─────────────────────────
   // El stock baja en el momento que el colaborador registra el pedido —
@@ -5808,17 +5914,39 @@ function registrarPedido(){
   // las unidades otra vez y crea un pedido duplicado.
   if(!bloquearOperacion('registrarPedido','btn-registrar-pedido','Registrando…')) return;
   if(hayReal){
-    aplicarSalidaStockPedido(ped, function(ok){
+    aplicarSalidaStockPedido(ped, function(ok, info){
       if(!ok){
         liberarOperacion('registrarPedido','btn-registrar-pedido');
-        toast('⚠️ STOCK INSUFICIENTE: el inventario cambió justo antes de registrar (otro colaborador vendió esa unidad). El pedido NO se creó. Actualiza el inventario e intenta de nuevo.');
+        toast('⚠️ No se pudo registrar: una de las variantes ya no existe en el catálogo. El pedido NO se creó. Actualiza el inventario e intenta de nuevo.');
         console.error('[PEDIDO RECHAZADO - TRANSACCIÓN DE STOCK ABORTADA]',{items,timestamp:new Date().toISOString(),usuario:CU?.nombre});
-        registrarAlertaStock('Transacción de stock abortada (última validación, atómica)', items.filter(i=>!i.externa).map(i=>`${i.productoNombre} T${i.talla}/${i.color} x${i.cantidad}`).join(' · '));
+        registrarAlertaStock('Transacción de stock abortada (variante inexistente)', items.filter(i=>!i.externa).map(i=>`${i.productoNombre} T${i.talla}/${i.color} x${i.cantidad}`).join(' · '));
         return;
       }
       ped.stockDescontado=true;
+      // ── Marcado de BACKORDER (venta sin stock físico) ──────────────────
+      // info.backorderPorVid[vid] = déficit total de esa variante tras la venta.
+      // Repartimos ese déficit entre los ítems del pedido (por orden) y marcamos
+      // cuántos pares de cada ítem quedaron "por reponer".
+      const backorderPorVid = (info && info.backorderPorVid) ? {...info.backorderPorVid} : {};
+      let hayBackorder=false;
+      ped.items.forEach(it=>{
+        if(it.externa) return;
+        const disp=backorderPorVid[it.vid]||0;
+        if(disp>0){
+          const falt=Math.min(it.cantidad, disp);
+          it.backorder=true;
+          it.faltante=falt;
+          backorderPorVid[it.vid]=disp-falt;
+          hayBackorder=true;
+        }
+      });
+      if(hayBackorder){
+        ped.tieneBackorder=true;
+        ped.backorderPendiente=true;
+        registrarAlertaStock('Venta sin stock físico (backorder)', ped.items.filter(i=>i.backorder).map(i=>`${i.productoNombre} T${i.talla}/${i.color} x${i.faltante}`).join(' · '));
+      }
       finalizarRegistroPedido();
-    });
+    }, {permitirNegativo:true});
   } else {
     ped.stockDescontado=false;
     finalizarRegistroPedido();
@@ -5836,7 +5964,10 @@ function registrarPedido(){
     const nDup=eliminarDuplicadosCancelados(ped);
 
     const notaDup=nDup?` · se eliminó ${nDup} pedido cancelado duplicado`:'';
-    if(hayPrecioBajo){
+    if(ped.backorderPendiente){
+      const pares=ped.items.filter(i=>i.backorder).reduce((s,i)=>s+(i.faltante||0),0);
+      toast(`⚠️ Pedido registrado con ${pares} par(es) SIN STOCK FÍSICO (por reponer). Bodega los entregará cuando llegue la mercancía del proveedor.`+notaDup, 6000);
+    } else if(hayPrecioBajo){
       toast('Pedido registrado — hay precio(s) bajo(s). El admin verá alertas.'+notaDup);
     } else {
       toast(`Pedido registrado con ${items.length} producto${items.length>1?'s':''}`+notaDup);
@@ -6216,6 +6347,11 @@ function limpiarFiltroFechaRango(){
   limpiarFiltroFecha();
 }
 
+let _soloBackorder=false;
+function toggleFiltroBackorder(){
+  _soloBackorder=!_soloBackorder;
+  renderAdminPedidos();
+}
 function renderAdminPedidos(){
   const filtroEstado=document.getElementById('filter-admin-pedidos')?.value||'';
   const filtroVend=document.getElementById('filter-admin-vendedor')?.value||'';
@@ -6229,6 +6365,20 @@ function renderAdminPedidos(){
   }
   const filtroBuscar=(document.getElementById('filter-admin-buscar')?.value||'').toLowerCase().trim();
   let pedidos=getPedidos();
+  // Contador global de pedidos con pares "por reponer" (backorder) y su total de pares.
+  const pedsBackorder=getPedidos().filter(p=>p.backorderPendiente);
+  const paresBackorderTotal=pedsBackorder.reduce((s,p)=>s+(Array.isArray(p.items)?p.items.filter(i=>i.backorder).reduce((a,i)=>a+(i.faltante||0),0):0),0);
+  const badgeBO=document.getElementById('badge-count-backorder');
+  if(badgeBO){
+    if(paresBackorderTotal>0){ badgeBO.style.display='inline-block'; badgeBO.textContent=paresBackorderTotal; }
+    else { badgeBO.style.display='none'; }
+  }
+  const btnBO=document.getElementById('btn-filtro-backorder');
+  if(btnBO){
+    btnBO.style.background=_soloBackorder?'#dc2626':'#fff';
+    btnBO.style.color=_soloBackorder?'#fff':'#dc2626';
+  }
+  if(_soloBackorder) pedidos=pedidos.filter(p=>p.backorderPendiente);
   if(filtroEstado) pedidos=pedidos.filter(p=>estadoEfectivo(p)===filtroEstado);
   if(filtroVend)   pedidos=pedidos.filter(p=>p.vendedorNombre===filtroVend);
   if(filtroBuscar){const _fbd=filtroBuscar.replace(/\D/g,'');pedidos=pedidos.filter(p=>{const c=p.cliente||{};return (c.nombre||'').toLowerCase().includes(filtroBuscar)||(_fbd&&(c.telefono||'').replace(/\D/g,'').includes(_fbd))||(c.ciudad||'').toLowerCase().includes(filtroBuscar)||(c.cedula||'').includes(filtroBuscar);});}
@@ -6253,7 +6403,7 @@ function renderAdminPedidos(){
   const btnGuias=document.getElementById('btn-guias-masivas');
   if(btnGuias) btnGuias.style.display=pedidos.length?'inline-flex':'none';
   const el=document.getElementById('admin-pedidos-content');
-  if(!pedidos.length){el.innerHTML=`<div class="card"><div class="empty"><div class="empty-icon"><i class="bi bi-bag-x" style="font-size:38px;color:var(--muted)"></i></div><h3>${filtroEstado||filtroVend||rotuloRango?'Sin pedidos con esos filtros'+(rotuloRango?' ('+rotuloRango+')':''):'No hay pedidos registrados'}</h3></div></div>`;return;}
+  if(!pedidos.length){el.innerHTML=`<div class="card"><div class="empty"><div class="empty-icon"><i class="bi bi-bag-x" style="font-size:38px;color:var(--muted)"></i></div><h3>${_soloBackorder?'No hay pedidos por reponer 🎉':(filtroEstado||filtroVend||rotuloRango?'Sin pedidos con esos filtros'+(rotuloRango?' ('+rotuloRango+')':''):'No hay pedidos registrados')}</h3></div></div>`;return;}
   const banner=rotuloRango
       ? `<div class="card mb-16" style="background:linear-gradient(135deg,#e0e7ff,#ede9fe);border:1px solid #c7d2fe;display:flex;align-items:center;justify-content:space-between;padding:12px 16px">
           <div style="display:flex;align-items:center;gap:10px">
@@ -6276,17 +6426,23 @@ function renderAdminPedidos(){
         :'';
     const paresInfo=ped.cantidadPares&&ped.cantidadPares>1?`<div style="font-size:10px;color:var(--muted)">${ped.cantidadPares} pares</div>`:'';
     const comboBadge=ped.tipoVenta==='combo'
-      ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo combo (2 productos a un precio único)"><i class="bi bi-box-seam-fill"></i> COMBO</span>`
+      ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo combo (varios productos a un precio único)"><i class="bi bi-box-seam-fill"></i> COMBO</span>`
       :ped.tipoVenta==='trio'
         ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo trío (3 productos a un precio único)"><i class="bi bi-boxes"></i> TRÍO</span>`
-        :ped.tipoVenta==='cambio'
-          ?` <span class="badge" style="background:#fef3c7;color:#92400e;font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo cambio"><i class="bi bi-arrow-left-right"></i> CAMBIO</span>`
-          :(ped.tipoVenta==='externa'||ped.botaExterna)
-            ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido con bota externa (fuera de inventario)"><i class="bi bi-box-arrow-up-right"></i> EXTERNA</span>`
-            :'';
-    html+=`<tr${ped.precioBajo?' style="background:#fffbeb"':''}>
+        :ped.tipoVenta==='cuarteto'
+          ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo cuarteto (4 productos a un precio único)"><i class="bi bi-boxes"></i> CUARTETO</span>`
+          :ped.tipoVenta==='cambio'
+            ?` <span class="badge" style="background:#fef3c7;color:#92400e;font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo cambio"><i class="bi bi-arrow-left-right"></i> CAMBIO</span>`
+            :(ped.tipoVenta==='externa'||ped.botaExterna)
+              ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido con bota externa (fuera de inventario)"><i class="bi bi-box-arrow-up-right"></i> EXTERNA</span>`
+              :'';
+    const paresBO=ped.backorderPendiente?ped.items.filter(i=>i.backorder).reduce((s,i)=>s+(i.faltante||0),0):0;
+    const backorderBadge=ped.backorderPendiente
+      ?` <span class="badge" style="background:#dc2626;color:#fff;font-size:9px;padding:2px 6px;margin-left:4px;font-weight:700" title="Vendido sin stock físico. Se entregará cuando el proveedor reponga (prioridad por orden de pedido)."><i class="bi bi-exclamation-octagon-fill"></i> POR REPONER${paresBO?` ${paresBO}`:''}</span>`
+      :'';
+    html+=`<tr${ped.backorderPendiente?' style="background:#fef2f2"':ped.precioBajo?' style="background:#fffbeb"':''}>
       <td style="white-space:nowrap;font-size:12px">${fmtD(ped.fecha)}${ped.ts?`<div style="font-size:10px;color:var(--muted);margin-top:2px"><i class="bi bi-clock"></i> ${fmtT(ped.ts)}</div>`:''}</td>
-      <td><div style="font-size:13px">${pedResumen(ped)}${comboBadge}</div>${paresInfo}</td>
+      <td><div style="font-size:13px">${pedResumen(ped)}${comboBadge}${backorderBadge}</div>${paresInfo}</td>
       <td><strong>${ped.cliente.nombre}</strong><div style="font-size:11px;color:var(--muted)">${ped.cliente.telefono}</div>
           <div style="font-size:10px;color:var(--muted)">${ped.cliente.barrio||''}${ped.cliente.ciudad?', '+ped.cliente.ciudad:''}</div></td>
       <td style="font-size:12px">${ped.cliente.ciudad||'—'}</td>
@@ -6335,6 +6491,7 @@ function verDetallePedido(id){
           <div style="flex:1;min-width:0">
             <div style="font-weight:700">${it.productoNombre}${it.externa?` <span class="badge badge-purple" style="font-size:9px"><i class="bi bi-box-arrow-up-right"></i> externa</span>`:''}</div>
             <div style="font-size:12px;color:var(--muted)">${it.externa?`Bota externa (fuera de inventario)`:`Talla ${it.talla} / ${it.color}${it.sku?' · '+it.sku:''}`} · ${it.cantidad} par${it.cantidad>1?'es':''}</div>
+            ${it.backorder&&(it.faltante||0)>0?`<div style="font-size:11px;margin-top:3px"><span class="badge" style="background:#dc2626;color:#fff;font-size:9px;padding:2px 6px;font-weight:700"><i class="bi bi-exclamation-octagon-fill"></i> POR REPONER: ${it.faltante} par(es) sin stock físico</span></div>`:''}
             ${it.precioVenta?`<div style="font-size:12px"><i class="bi bi-tag-fill"></i> ${fmtM(it.precioVenta)}${it.precioBajo?` <span class="badge badge-warning" style="font-size:9px"><i class="bi bi-exclamation-triangle-fill"></i> bajo</span>`:it.precioAlto?` <span style="font-size:9px;color:#3b82f6">↑ alto</span>`:''}</div>`:''}
           </div>
         </div>`;
@@ -8017,7 +8174,7 @@ function getCatIcon(cat=''){
 }
 function abrirPickerProducto(){
   const catSel=document.getElementById('picker-cat');
-  const soloAccesorios = tipoVenta==='combo'||tipoVenta==='trio';
+  const soloAccesorios = esVentaGrupo(tipoVenta);
   let cats=[...new Set(getProds().map(p=>p.categoria||'Sin categoría').filter(Boolean))].sort();
   if(soloAccesorios) cats=cats.filter(c=>esCategoriaComboPermitida(c));
   const catActual=catSel?.value||'';
@@ -8035,7 +8192,7 @@ function renderPickerProductos(){
   const q=(document.getElementById('picker-search')?.value||'').toLowerCase();
   const cat=document.getElementById('picker-cat')?.value||'';
   let prods=getProds();
-  const soloAccesorios = tipoVenta==='combo'||tipoVenta==='trio';
+  const soloAccesorios = esVentaGrupo(tipoVenta);
   if(soloAccesorios) prods=prods.filter(p=>esCategoriaComboPermitida(p.categoria));
   if(q) prods=prods.filter(p=>p.nombre.toLowerCase().includes(q)||(p.categoria||'').toLowerCase().includes(q));
   if(cat) prods=prods.filter(p=>(p.categoria||'Sin categoría')===cat);
@@ -8897,6 +9054,56 @@ async function _generarGraficoPng(config, w=600, h=380){
   return dataUrl;
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  REPORTE POR VENDEDOR (una hoja individual)  ·  Corte 28 → 27
+//  Replica el sheet por vendedor del Excel maestro: tabla VENTAS AL DETAL,
+//  tabla ADDI - SISTECREDITO, cuadro Resumen y cuadro Comisión (con las
+//  mismas fórmulas: Total = Detal exitosas × Valor comisión;
+//  Neto a pagar = Total + Combos y tríos − Descuento por devoluciones).
+//  Las celdas de decisión (Valor comisión, Descuento por devoluciones,
+//  Combos y tríos, Ventas del mes, Ventas del mes anterior) quedan en blanco
+//  para llenarse a mano; lo demás se calcula con los datos reales de bodega.
+// ════════════════════════════════════════════════════════════════════
+
+// Corte del 28 de un mes al 27 del siguiente (ej. "junio 28 a julio 27").
+function _rangoCorte28(){
+  const hoy=new Date();
+  const d=hoy.getDate(), m=hoy.getMonth(), y=hoy.getFullYear();
+  const inicio = d>=28 ? new Date(y,m,28) : new Date(y,m-1,28);
+  const cierre = new Date(inicio.getFullYear(), inicio.getMonth()+1, 27);
+  const hoyMid = new Date(y,m,d);
+  const fin = hoyMid < cierre ? hoyMid : cierre; // hasta hoy si el corte sigue abierto
+  const toIso = x => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+  const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const etiqueta = `${MESES[inicio.getMonth()]} 28 a ${MESES[cierre.getMonth()]} 27 de ${cierre.getFullYear()}`;
+  return { inicio, fin, cierre, inicioIso: toIso(inicio), finIso: toIso(fin), cierreIso: toIso(cierre), etiqueta };
+}
+
+// Clasifica el estado efectivo del pedido en el bucket del Excel.
+function _bucketExcel(ped){
+  const e = estadoEfectivo(ped);
+  if(e==='entregado')     return 'exitosa';
+  if(e==='en_devolucion') return 'devolucion';
+  if(e==='cancelado')     return 'anulada';
+  return 'procesamiento'; // pendiente / aprobado / enviado / en_oficina / novedad
+}
+// Texto detallado del Estado (columna F).
+function _estadoTextoExcel(ped){
+  const e = estadoEfectivo(ped);
+  const M={ entregado:'Entrega exitosa', en_devolucion:'Devuelto al remitente', cancelado:'Anulada',
+    en_oficina:'Reclame en oficina', enviado:'Tránsito nacional', novedad:'Novedad',
+    pendiente:'Pendiente', aprobado:'Aprobado' };
+  return M[e] || e || '—';
+}
+// Texto normalizado de la columna Pagos (4 buckets).
+function _pagosTextoExcel(bucket){
+  return bucket==='exitosa' ? 'Entrega exitosa'
+    : bucket==='devolucion' ? 'Devuelto al remitente'
+    : bucket==='anulada'    ? 'Anulada'
+    : 'En procesamiento';
+}
+function _fechaExcel(f){ if(!f) return null; const p=String(f).split('-').map(Number); return new Date(p[0], (p[1]||1)-1, p[2]||1); }
+
 async function exportarExcelColaborador(userId){
   if(CU?.rol !== 'admin'){ toast('Solo el administrador puede descargar este reporte'); return; }
   if(typeof ExcelJS === 'undefined'){ toast('Librería ExcelJS no cargada — refresca la página'); return; }
@@ -8904,381 +9111,221 @@ async function exportarExcelColaborador(userId){
   if(!user){ toast('Usuario no encontrado'); return; }
   toast('Generando reporte de ' + user.nombre + '…');
   try {
-    const rango = _rangoCorte27();
-    const pares = _calcParesVendedor(userId, rango);
-    const publi = await _calcPublicidadVendedor(user, rango);
-    const ventasConfirmadas = pares.confirmados;
-    const correlacion = publi.mensajesTotal > 0 ? (ventasConfirmadas / publi.mensajesTotal) * 100 : 0;
-    const costoPorVenta = ventasConfirmadas > 0 ? (publi.gastoTotal / ventasConfirmadas) : 0;
-    const fmtMoney = n => '$'+Math.round(n||0).toLocaleString('es-CO');
+    const rango = _rangoCorte28();
+    const guias = getGuias();
+    const esAddi = fp => fp==='addi' || fp==='sistecredito';
+    const numGuia = pid => (guias.find(g=>g.pedidoId===pid)?.numero || '');
 
-    // ── Workbook con UNA SOLA hoja ──
+    // Pedidos del vendedor dentro del corte.
+    const misPed = getPedidos()
+      .filter(p => p.vendedorId === userId && _pedidoEnRango(p, rango))
+      .sort((a,b) => (a.fecha||'').localeCompare(b.fecha||'') || (a.ts||0)-(b.ts||0));
+
+    // Separar: ADDI/SISTECREDITO (por forma de pago), combos (grupo), y detal (el resto).
+    const addiPed  = misPed.filter(p => esAddi(p.formaPago));
+    const comboPed = misPed.filter(p => !esAddi(p.formaPago) && esVentaGrupo(p.tipoVenta));
+    const detalPed = misPed.filter(p => !esAddi(p.formaPago) && !esVentaGrupo(p.tipoVenta));
+
+    // Conteos de combos (auto, según lo pedido) — pares entregados/devueltos.
+    let combosExitosas=0, combosDevoluciones=0;
+    comboPed.forEach(p => {
+      const b=_bucketExcel(p), n=p.cantidadPares||1;
+      if(b==='exitosa') combosExitosas+=n; else if(b==='devolucion') combosDevoluciones+=n;
+    });
+
+    // ── Estilos ──
+    const F_ROJO   = 'FFC00000';
+    const F_OSCURO = 'FF404040';
+    const F_VERDE  = 'FF548235';
+    const F_VERDE2 = 'FF70AD47';
+    const F_VERDECLARO = 'FFE2EFDA';
+    const F_GRISCLARO  = 'FFF2F2F2';
+    const bordeFino = { top:{style:'thin',color:{argb:'FFBFBFBF'}}, left:{style:'thin',color:{argb:'FFBFBFBF'}}, bottom:{style:'thin',color:{argb:'FFBFBFBF'}}, right:{style:'thin',color:{argb:'FFBFBFBF'}} };
+    const solido = argb => ({ type:'pattern', pattern:'solid', fgColor:{argb} });
+
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Titan Botas';
     wb.created = new Date();
-    const ws = wb.addWorksheet('Reporte', { views:[{ showGridLines:false, zoomScale:100 }] });
-    // 14 columnas para que la tabla de campañas quepa cómoda
+    const ws = wb.addWorksheet(user.nombre.slice(0,28) || 'Vendedor', { views:[{ showGridLines:false }] });
     ws.columns = [
-      { width:22 },{ width:11 },{ width:9 },{ width:13 },{ width:14 },{ width:11 },{ width:12 },
-      { width:9 },{ width:11 },{ width:11 },{ width:15 },{ width:15 },{ width:14 },{ width:13 }
+      { width:12 },{ width:16 },{ width:9 },{ width:13 },{ width:16 },
+      { width:20 },{ width:24 },{ width:28 },{ width:12 },{ width:24 },{ width:13 }
     ];
-    const COL_END = 'N'; // última columna (14)
-    let row = 1;
 
-    // ── BANNER ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    const banner = ws.getCell(`A${row}`);
-    banner.value = `TITAN BOTAS — Reporte de ${user.nombre}`;
-    banner.font = { name:'Calibri', size:22, bold:true, color:{argb:'FFFFFFFF'} };
-    banner.alignment = { vertical:'middle', horizontal:'center' };
-    banner.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E1B4B'} };
-    ws.getRow(row).height = 42;
-    row++;
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    const subBanner = ws.getCell(`A${row}`);
-    subBanner.value = `Periodo: ${rango.inicioIso}  →  ${rango.finIso}   |   Generado: ${new Date().toLocaleString('es-CO')}   |   Cierre 27 a 27`;
-    subBanner.font = { italic:true, color:{argb:'FFFFFFFF'}, size:11 };
-    subBanner.alignment = { horizontal:'center', vertical:'middle' };
-    subBanner.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF312E81'} };
-    ws.getRow(row).height = 24;
-    row++; row++; // espacio
+    // ── Título ──
+    ws.mergeCells('A1:K1');
+    const t = ws.getCell('A1');
+    t.value = 'VENTAS AL DETAL';
+    t.font = { bold:true, size:16, color:{argb:F_ROJO} };
+    t.alignment = { horizontal:'center', vertical:'middle' };
+    ws.getRow(1).height = 26;
+    ws.mergeCells('A2:K2');
+    const sub = ws.getCell('A2');
+    sub.value = `Asesor: ${user.nombre}   ·   Corte: ${rango.etiqueta}   ·   Generado: ${new Date().toLocaleString('es-CO')}`;
+    sub.font = { italic:true, size:10, color:{argb:'FF666666'} };
+    sub.alignment = { horizontal:'center' };
 
-    // ── 📊 RESUMEN PRINCIPAL — 3 KPI cards prominentes ──
-    const kpiHeaderRow = row;
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    const kpiHdr = ws.getCell(`A${row}`);
-    kpiHdr.value = '📊  RESUMEN PRINCIPAL';
-    kpiHdr.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    kpiHdr.alignment = { horizontal:'left', vertical:'middle' };
-    kpiHdr.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++; row++;
+    // ── Encabezado tabla VENTAS AL DETAL ──
+    const DETAL_HDR = ['Fecha','Asesor','Cantidad','Venta','Guia','Estado','Pagos','Destinatario','Exitosas','Devolucion','Procesamiento'];
+    const hdrRow = 4;
+    DETAL_HDR.forEach((txt,i)=>{
+      const c = ws.getRow(hdrRow).getCell(i+1);
+      c.value = txt;
+      c.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
+      c.fill = solido(F_OSCURO);
+      c.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+      c.border = bordeFino;
+    });
+    ws.getRow(hdrRow).height = 24;
 
-    // 3 KPI cards (cada uno ocupa columnas: 1-4, 5-9, 10-14)
-    const cardSpans = [['A','D'],['E','I'],['J','N']];
-    const cardData = [
-      { titulo:'COSTO POR MENSAJE', valor: publi.mensajesTotal>0 ? fmtMoney(publi.gastoTotal / publi.mensajesTotal) : '—', sub:`Gasto / Mensajes  (${publi.mensajesTotal} mensajes)`, color:'FFEF4444' },
-      { titulo:'GASTO TOTAL EN PUBLICIDAD', valor: fmtMoney(publi.gastoTotal), sub:`Suma del periodo`, color:'FF7C3AED' },
-      { titulo:'MENSAJES RECIBIDOS', valor: publi.mensajesTotal.toString(), sub:`Chats por publicidad`, color:'FF3B82F6' }
+    // ── Filas de detal ──
+    let r = hdrRow + 1;
+    const detalFirst = r;
+    detalPed.forEach(p => {
+      const bucket = _bucketExcel(p);
+      const n = p.cantidadPares || 1;
+      // Pares que SÍ generan comisión = excluyen las botas externas (que se
+      // venden pero no pagan comisión). Un pedido 100% externo → nCom = 0, así
+      // sus columnas Exitosas/Devolución/Procesamiento quedan en blanco y no
+      // suman a la base de comisión (Detal exitosas). La Cantidad y la Venta sí
+      // reflejan la venta completa.
+      const items = Array.isArray(p.items) && p.items.length ? p.items : null;
+      const nCom = items ? items.filter(it=>!it.externa).reduce((s,it)=>s+(it.cantidad||0),0)
+                         : (p.botaExterna || p.tipoVenta==='externa' ? 0 : n);
+      const row = ws.getRow(r);
+      row.getCell(1).value = _fechaExcel(p.fecha);
+      row.getCell(1).numFmt = 'dd/mm/yyyy';
+      row.getCell(2).value = p.vendedorNombre || user.nombre;
+      row.getCell(3).value = n;
+      row.getCell(4).value = p.precioVenta || 0;
+      row.getCell(4).numFmt = '"$"#,##0';
+      row.getCell(5).value = numGuia(p.id);
+      row.getCell(6).value = _estadoTextoExcel(p);
+      row.getCell(7).value = _pagosTextoExcel(bucket);
+      row.getCell(8).value = p.cliente?.nombre || '';
+      row.getCell(9).value  = (bucket==='exitosa'       && nCom>0) ? nCom : null;
+      row.getCell(10).value = (bucket==='devolucion'    && nCom>0) ? nCom : null;
+      row.getCell(11).value = (bucket==='procesamiento' && nCom>0) ? nCom : null;
+      for(let c=1;c<=11;c++){ row.getCell(c).border = bordeFino; row.getCell(c).font = row.getCell(c).font || { size:10 }; }
+      [1,3,5,9,10,11].forEach(c=>row.getCell(c).alignment={horizontal:'center'});
+      r++;
+    });
+    const detalLast = r - 1;
+    const hayDetal = detalLast >= detalFirst;
+
+    // ── Fila TOTAL de detal ──
+    const detalTotalRow = r;
+    const rowT = ws.getRow(detalTotalRow);
+    rowT.getCell(1).value = 'Total';
+    rowT.getCell(1).font = { bold:true };
+    rowT.getCell(3).value = hayDetal ? { formula:`SUM(C${detalFirst}:C${detalLast})` } : 0;
+    rowT.getCell(4).value = hayDetal ? { formula:`SUM(D${detalFirst}:D${detalLast})` } : 0;
+    rowT.getCell(4).numFmt = '"$"#,##0';
+    rowT.getCell(9).value  = hayDetal ? { formula:`SUM(I${detalFirst}:I${detalLast})` } : 0;
+    rowT.getCell(10).value = hayDetal ? { formula:`SUM(J${detalFirst}:J${detalLast})` } : 0;
+    rowT.getCell(11).value = hayDetal ? { formula:`SUM(K${detalFirst}:K${detalLast})` } : 0;
+    for(let c=1;c<=11;c++){ rowT.getCell(c).fill = solido(F_GRISCLARO); rowT.getCell(c).border = bordeFino; rowT.getCell(c).font = Object.assign({bold:true}, rowT.getCell(c).font||{}); }
+    [3,9,10,11].forEach(c=>rowT.getCell(c).alignment={horizontal:'center'});
+
+    // ── Tabla ADDI - SISTECREDITO ──
+    r = detalTotalRow + 3;
+    ws.mergeCells(`A${r}:E${r}`);
+    const at = ws.getCell(`A${r}`);
+    at.value = 'ADDI - SISTECREDITO';
+    at.font = { bold:true, size:13, color:{argb:F_ROJO} };
+    at.alignment = { horizontal:'center' };
+    r++;
+    const ADDI_HDR = ['Fecha','Cliente','Credito','Pares','Asesor'];
+    const addiHdrRow = r;
+    ADDI_HDR.forEach((txt,i)=>{
+      const c = ws.getRow(addiHdrRow).getCell(i+1);
+      c.value = txt;
+      c.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
+      c.fill = solido(F_VERDE);
+      c.alignment = { horizontal:'center' };
+      c.border = bordeFino;
+    });
+    r++;
+    const addiFirst = r;
+    addiPed.forEach(p => {
+      const row = ws.getRow(r);
+      row.getCell(1).value = _fechaExcel(p.fecha);
+      row.getCell(1).numFmt = 'dd/mm/yyyy';
+      row.getCell(2).value = p.cliente?.nombre || '';
+      row.getCell(3).value = p.formaPago==='addi' ? 'Addi' : 'Sistecredito';
+      row.getCell(4).value = p.cantidadPares || 1;
+      row.getCell(5).value = p.vendedorNombre || user.nombre;
+      for(let c=1;c<=5;c++){ row.getCell(c).border = bordeFino; }
+      [1,3,4].forEach(c=>row.getCell(c).alignment={horizontal:'center'});
+      r++;
+    });
+    const addiLast = r - 1;
+    const hayAddi = addiLast >= addiFirst;
+    const addiTotalRow = r;
+    const rowA = ws.getRow(addiTotalRow);
+    rowA.getCell(1).value = 'Total';
+    rowA.getCell(1).font = { bold:true };
+    rowA.getCell(4).value = hayAddi ? { formula:`SUM(D${addiFirst}:D${addiLast})` } : 0;
+    for(let c=1;c<=5;c++){ rowA.getCell(c).fill = solido(F_GRISCLARO); rowA.getCell(c).border = bordeFino; rowA.getCell(c).font = Object.assign({bold:true}, rowA.getCell(c).font||{}); }
+    rowA.getCell(4).alignment = { horizontal:'center' };
+
+    // ── Cuadro RESUMEN (G:H) y COMISIÓN (J:K), lado a lado ──
+    const boxHdr = addiTotalRow + 2;
+    // Resumen
+    ws.getCell(`G${boxHdr}`).value = 'Vendedor';
+    ws.getCell(`H${boxHdr}`).value = user.nombre;
+    // Comisión
+    ws.getCell(`J${boxHdr}`).value = 'Item';
+    ws.getCell(`K${boxHdr}`).value = 'Valor';
+    ['G','H'].forEach(col=>{ const c=ws.getCell(`${col}${boxHdr}`); c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=solido(F_VERDE); c.border=bordeFino; });
+    ['J','K'].forEach(col=>{ const c=ws.getCell(`${col}${boxHdr}`); c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=solido(F_VERDE2); c.border=bordeFino; });
+
+    const cellDetalExitosas = `H${boxHdr+3}`;
+    const cellValorComision = `K${boxHdr+1}`;
+    const cellTotalComision = `K${boxHdr+2}`;
+    const cellDescuento     = `K${boxHdr+3}`;
+    const cellCombosTrios   = `K${boxHdr+4}`;
+
+    // Filas del resumen (label G, valor H). null = fórmula/auto; '' = manual (en blanco).
+    const resumen = [
+      ['Ventas del mes', null],
+      ['Ventas del mes anterior', null],
+      ['Detal exitosas', hayDetal ? { formula:`I${detalTotalRow}` } : 0],
+      ['Detal devoluciones', hayDetal ? { formula:`J${detalTotalRow}` } : 0],
+      ['Combos exitosas', combosExitosas],
+      ['Combos devoluciones', combosDevoluciones],
+      ['Sistecredito', hayAddi ? { formula:`D${addiTotalRow}` } : 0],
+      ['En procesamiento', hayDetal ? { formula:`K${detalTotalRow}` } : 0]
     ];
-    cardData.forEach((card, i) => {
-      const [c0, c1] = cardSpans[i];
-      // Título card (fondo color, texto blanco)
-      ws.mergeCells(`${c0}${row}:${c1}${row}`);
-      const tCell = ws.getCell(`${c0}${row}`);
-      tCell.value = card.titulo;
-      tCell.font = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
-      tCell.alignment = { horizontal:'center', vertical:'middle' };
-      tCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:card.color} };
-      // Valor grande
-      ws.mergeCells(`${c0}${row+1}:${c1}${row+1}`);
-      const vCell = ws.getCell(`${c0}${row+1}`);
-      vCell.value = card.valor;
-      vCell.font = { bold:true, color:{argb:card.color}, size:28 };
-      vCell.alignment = { horizontal:'center', vertical:'middle' };
-      vCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFFFFF'} };
-      vCell.border = { left:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
-      // Subtítulo
-      ws.mergeCells(`${c0}${row+2}:${c1}${row+2}`);
-      const sCell = ws.getCell(`${c0}${row+2}`);
-      sCell.value = card.sub;
-      sCell.font = { italic:true, color:{argb:'FF64748B'}, size:10 };
-      sCell.alignment = { horizontal:'center', vertical:'middle' };
-      sCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFFFFF'} };
-      sCell.border = { bottom:{style:'thin', color:{argb:'FFE5E7EB'}}, left:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
+    resumen.forEach((rowData,i)=>{
+      const rr = boxHdr + 1 + i;
+      const cl = ws.getCell(`G${rr}`), cv = ws.getCell(`H${rr}`);
+      cl.value = rowData[0];
+      if(rowData[1] !== null) cv.value = rowData[1];
+      cl.border = bordeFino; cv.border = bordeFino;
+      cv.alignment = { horizontal:'center' };
+      cl.fill = solido(F_GRISCLARO);
     });
-    ws.getRow(row).height = 28;
-    ws.getRow(row+1).height = 50;
-    ws.getRow(row+2).height = 22;
-    row += 4; // 3 filas usadas + 1 espacio
 
-    // ── 📦 PEDIDOS DEL PERIODO (pares) ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    let h = ws.getCell(`A${row}`);
-    h.value = '📦  PARES DEL PERIODO  (excluye bodega PROMOCIÓNES)';
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    // Encabezados
-    const paresHdr = ['Categoría','Pares','Visual'];
-    paresHdr.forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'} };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF6366F1'} };
-      cell.alignment = { horizontal:'center' };
-    });
-    ws.mergeCells(`C${row}:${COL_END}${row}`);
-    row++;
-    const paresStart = row;
-    const paresFilas = [
-      ['Pares confirmados (entregados)', pares.confirmados, 'FF10B981'],
-      ['Pares viajando (en ruta)', pares.viajando, 'FF3B82F6'],
-      ['Pares por confirmar (pendientes)', pares.porConfirmar, 'FFF59E0B'],
-      ['TOTAL pares en gestión', pares.confirmados+pares.viajando+pares.porConfirmar, 'FF1E1B4B']
+    // Filas de comisión (label J, valor K).
+    const comision = [
+      ['Valor comision', ''],                                    // manual
+      ['Total de la comision', { formula:`${cellDetalExitosas}*${cellValorComision}` }],
+      ['Descuento por devoluciones', ''],                        // manual
+      ['Combos y trios', ''],                                    // manual
+      ['Neto a pagar', { formula:`${cellTotalComision}+${cellCombosTrios}-${cellDescuento}` }]
     ];
-    paresFilas.forEach((rowData, i) => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = rowData[0];
-      r.getCell(2).value = rowData[1];
-      r.getCell(1).font = { bold:i===3 };
-      r.getCell(2).font = { bold:true, color:{argb:rowData[2]}, size:13 };
-      r.getCell(2).alignment = { horizontal:'center' };
-      r.getCell(2).numFmt = '#,##0';
-      if(i===3){ // Total row con fondo
-        for(let c=1;c<=14;c++) r.getCell(c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF1F5F9'} };
-      }
-      row++;
+    comision.forEach((rowData,i)=>{
+      const rr = boxHdr + 1 + i;
+      const cl = ws.getCell(`J${rr}`), cv = ws.getCell(`K${rr}`);
+      cl.value = rowData[0];
+      if(rowData[1] !== '') cv.value = rowData[1];
+      cl.border = bordeFino; cv.border = bordeFino;
+      cv.numFmt = '"$"#,##0';
+      cv.alignment = { horizontal:'right' };
+      cl.fill = solido(F_VERDECLARO);
+      if(rowData[0]==='Neto a pagar'){ cl.font={bold:true}; cv.font={bold:true}; }
     });
-    // Data bars desactivadas (bug en ExcelJS 4.4.0 al serializar databar XML).
-    // El reporte se ve igual de profesional; para gráficos editables se usa
-    // Insertar > Gráficos > Recomendados directamente en Excel.
-    const addDataBar = (ref, argbColor) => { /* no-op */ };
-    addDataBar(`B${paresStart}:B${paresStart+2}`, 'FF6366F1');
-    row++; // espacio
-
-    // ── 📣 MÉTRICAS DE PUBLICIDAD (10 KPIs) ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    h = ws.getCell(`A${row}`);
-    h.value = '📣  MÉTRICAS DE PUBLICIDAD';
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    ['Métrica','Valor'].forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'} };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF6366F1'} };
-      cell.alignment = { horizontal:i===0?'left':'center' };
-    });
-    ws.mergeCells(`B${row}:${COL_END}${row}`);
-    row++;
-    const cpConv = publi.mensajesTotal>0 ? (publi.gastoTotal / publi.mensajesTotal) : 0;
-    const bloquePub = [
-      ['Chats / Mensajes recibidos', publi.mensajesTotal, 'FF3B82F6'],
-      ['Ventas confirmadas (pares entregados)', ventasConfirmadas, 'FF10B981'],
-      ['Correlación Chats → Ventas confirmadas', correlacion.toFixed(2)+'%', 'FF7C3AED'],
-      ['Gasto total invertido en publicidad', fmtMoney(publi.gastoTotal), 'FFEF4444'],
-      ['$/Conversación (Gasto / Mensajes)', cpConv>0?fmtMoney(cpConv):'—', 'FFEF4444'],
-      ['Costo promedio por venta confirmada', costoPorVenta>0?fmtMoney(costoPorVenta):'—', 'FFEF4444'],
-      ['Venta entregada (ingreso entregados)', fmtMoney(publi.ventaEntTotal), 'FF10B981'],
-      ['Venta en ruta (ingreso en tránsito)', fmtMoney(publi.ventaRutaTotal), 'FF3B82F6'],
-      ['Utilidad entregada (venta − costo − gasto)', fmtMoney(publi.utilidadTotal), publi.utilidadTotal>=0?'FF10B981':'FFEF4444'],
-      ['ROAS entregado (venta entregada / gasto)', publi.roasTotal>0?publi.roasTotal.toFixed(2)+'x':'—', publi.roasTotal>=2?'FF10B981':publi.roasTotal>=1?'FFF59E0B':'FFEF4444']
-    ];
-    bloquePub.forEach(rowData => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = rowData[0];
-      r.getCell(2).value = rowData[1];
-      r.getCell(2).font = { bold:true, color:{argb:rowData[2]}, size:12 };
-      r.getCell(2).alignment = { horizontal:'center' };
-      row++;
-    });
-    row++; // espacio
-
-    // ── 🎯 CAMPAÑAS DE PUBLICIDAD (réplica de la tabla de la app) ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    h = ws.getCell(`A${row}`);
-    h.value = `🎯  CAMPAÑAS DE PUBLICIDAD POR VENDEDOR  (fuente: ${publi.fuente})`;
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    const campHdr = ['Vendedor / Campaña','Estado','Antig.','Gasto','Presup. diario','Mensajes','$/Conv','CTR','CPM','CPC','Venta entreg.','Venta en ruta','Utilidad','ROAS entreg.'];
-    campHdr.forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E1B4B'} };
-      cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
-    });
-    ws.getRow(row).height = 28;
-    row++;
-    const campStart = row;
-    publi.campañas.forEach(c => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = c.nombre;
-      r.getCell(2).value = c.estado;
-      r.getCell(3).value = c.antiguedadDias>0 ? c.antiguedadDias+' d' : '—';
-      r.getCell(4).value = c.gasto;
-      r.getCell(5).value = c.presupuestoDiario>0 ? c.presupuestoDiario : '—';
-      r.getCell(6).value = c.mensajes;
-      r.getCell(7).value = c.cpconv>0 ? Math.round(c.cpconv) : '—';
-      r.getCell(8).value = c.ctr>0 ? (c.ctr.toFixed(2)+'%') : '—';
-      r.getCell(9).value = c.cpm>0 ? Math.round(c.cpm) : '—';
-      r.getCell(10).value = c.cpc>0 ? Math.round(c.cpc) : '—';
-      r.getCell(11).value = c.ventaEntregada;
-      r.getCell(12).value = c.ventaEnRuta;
-      r.getCell(13).value = c.utilidad;
-      r.getCell(14).value = c.roasEntregado>0 ? (c.roasEntregado.toFixed(2)+'x') : '—';
-      // Formato moneda
-      [4,5,7,9,10,11,12,13].forEach(col => {
-        const cell = r.getCell(col);
-        if(typeof cell.value === 'number') cell.numFmt = '"$"#,##0';
-      });
-      r.getCell(6).numFmt = '#,##0';
-      // Color utilidad
-      if(typeof r.getCell(13).value === 'number'){
-        r.getCell(13).font = { bold:true, color:{ argb: r.getCell(13).value >= 0 ? 'FF10B981' : 'FFEF4444' } };
-      }
-      // Color estado
-      const est = _normTxt(c.estado);
-      if(est==='ACTIVA' || est==='ACTIVE') r.getCell(2).font = { bold:true, color:{argb:'FF10B981'} };
-      else if(est==='PAUSADA' || est==='PAUSED') r.getCell(2).font = { bold:true, color:{argb:'FFF59E0B'} };
-      // Centrar
-      [2,3,6,7,8,9,10,14].forEach(col => { r.getCell(col).alignment = { horizontal:'center' }; });
-      row++;
-    });
-    if(publi.campañas.length){
-      // Fila TOTAL
-      const r = ws.getRow(row);
-      r.getCell(1).value = 'TOTAL';
-      r.getCell(4).value = publi.gastoTotal;
-      r.getCell(6).value = publi.mensajesTotal;
-      r.getCell(7).value = publi.mensajesTotal>0 ? Math.round(publi.gastoTotal/publi.mensajesTotal) : '—';
-      r.getCell(11).value = publi.ventaEntTotal;
-      r.getCell(12).value = publi.ventaRutaTotal;
-      r.getCell(13).value = publi.utilidadTotal;
-      r.getCell(14).value = publi.roasTotal>0 ? (publi.roasTotal.toFixed(2)+'x') : '—';
-      for(let c=1;c<=14;c++){
-        const cell = r.getCell(c);
-        cell.font = Object.assign({ bold:true }, cell.font||{});
-        cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-      }
-      [4,7,11,12,13].forEach(col => { r.getCell(col).numFmt = '"$"#,##0'; });
-      r.getCell(13).font = { bold:true, color:{ argb: publi.utilidadTotal >= 0 ? 'FF10B981' : 'FFEF4444' } };
-      [2,3,6,7,8,9,10,14].forEach(col => { r.getCell(col).alignment = { horizontal:'center' }; });
-      row++;
-      // Data bars sobre gasto, ventaEnt, utilidad (las columnas más importantes)
-      const lastDataRow = row-2; // excluye fila TOTAL
-      addDataBar(`D${campStart}:D${lastDataRow}`, 'FF7C3AED');
-      addDataBar(`K${campStart}:K${lastDataRow}`, 'FF10B981');
-      addDataBar(`M${campStart}:M${lastDataRow}`, 'FF3B82F6');
-    } else {
-      ws.mergeCells(`A${row}:${COL_END}${row}`);
-      ws.getCell(`A${row}`).value = `Sin campañas encontradas para "${(user.nombre||'').split(' ')[0]}" ni en titanbotas/publicidad/historico (rango ${rango.inicioIso} → ${rango.finIso}) ni en titanbotas/publicidad/snapshot.rangos. Verifica que: (1) n8n esté escribiendo datos, (2) el primer nombre del usuario coincida con el primer nombre en las filas de "vendedores[]" del snapshot.`;
-      ws.getCell(`A${row}`).font = { italic:true, color:{argb:'FF64748B'} };
-      row++;
-    }
-    row++; // espacio
-
-    // ── 📅 DETALLE DIARIO ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    h = ws.getCell(`A${row}`);
-    h.value = '📅  PUBLICIDAD — DETALLE POR DÍA';
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    const diaHdr = ['Fecha','Gasto','Mensajes','$/Conv','CTR','CPM','CPC','Venta entreg.','Venta en ruta'];
-    diaHdr.forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'} };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E1B4B'} };
-      cell.alignment = { horizontal:'center' };
-    });
-    row++;
-    const diaStart = row;
-    publi.detalleDias.forEach(d => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = d.fecha;
-      r.getCell(2).value = d.gasto;
-      r.getCell(3).value = d.mensajes;
-      r.getCell(4).value = d.mensajes>0?Math.round(d.gasto/d.mensajes):0;
-      r.getCell(5).value = '';
-      r.getCell(6).value = '';
-      r.getCell(7).value = '';
-      r.getCell(8).value = d.ventaEntregada;
-      r.getCell(9).value = d.ventaEnRuta;
-      [2,4,8,9].forEach(col => { r.getCell(col).numFmt = '"$"#,##0'; });
-      r.getCell(3).numFmt = '#,##0';
-      [1,3,5,6,7].forEach(col => { r.getCell(col).alignment = { horizontal:'center' }; });
-      row++;
-    });
-    if(publi.detalleDias.length){
-      const r = ws.getRow(row);
-      r.getCell(1).value = 'TOTAL';
-      r.getCell(2).value = publi.gastoTotal;
-      r.getCell(3).value = publi.mensajesTotal;
-      r.getCell(4).value = publi.mensajesTotal>0?Math.round(publi.gastoTotal/publi.mensajesTotal):0;
-      r.getCell(8).value = publi.ventaEntTotal;
-      r.getCell(9).value = publi.ventaRutaTotal;
-      for(let c=1;c<=9;c++){ r.getCell(c).font = { bold:true }; r.getCell(c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} }; }
-      [2,4,8,9].forEach(col => { r.getCell(col).numFmt = '"$"#,##0'; });
-      r.getCell(3).numFmt = '#,##0';
-      row++;
-      const lastDayRow = row-2;
-      addDataBar(`B${diaStart}:B${lastDayRow}`, 'FF7C3AED');
-      addDataBar(`C${diaStart}:C${lastDayRow}`, 'FF3B82F6');
-    } else {
-      ws.mergeCells(`A${row}:${COL_END}${row}`);
-      ws.getCell(`A${row}`).value = publi.gastoTotal>0
-        ? `El desglose día por día no está disponible (fuente actual: ${publi.fuente}). Los totales sí están arriba en la sección Campañas. Para que aparezca el detalle diario, n8n debe escribir en titanbotas/publicidad/historico/{YYYY-MM-DD}.`
-        : `Sin datos de publicidad para este vendedor en el rango.`;
-      ws.getCell(`A${row}`).font = { italic:true, color:{argb:'FF64748B'} };
-      row++;
-    }
-    row++; // espacio
-
-    // ── 🛒 PEDIDOS DEL PERIODO ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    h = ws.getCell(`A${row}`);
-    h.value = '🛒  PEDIDOS DEL PERIODO  (columna "Pares PROMOCIÓNES" no cuenta en los totales)';
-    h.font = { bold:true, size:14, color:{argb:'FF1E1B4B'} };
-    h.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
-    ws.getRow(row).height = 24;
-    row++;
-    const pedHdr = ['Fecha','Pedido #','Cliente','Ciudad','Productos','Pares contables','Pares PROMOC.','Categoría','Est. ped.','Est. guía','Precio'];
-    pedHdr.forEach((t,i) => {
-      const cell = ws.getRow(row).getCell(i+1);
-      cell.value = t;
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E1B4B'} };
-      cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
-    });
-    ws.getRow(row).height = 28;
-    row++;
-    pares.detalle.sort((a,b) => (a.fecha||'').localeCompare(b.fecha||'')).forEach(p => {
-      const r = ws.getRow(row);
-      r.getCell(1).value = p.fecha;
-      r.getCell(2).value = p.pedidoId;
-      r.getCell(3).value = p.cliente;
-      r.getCell(4).value = p.ciudad;
-      r.getCell(5).value = p.productos;
-      r.getCell(6).value = p.paresContables;
-      r.getCell(7).value = p.paresPromo;
-      r.getCell(8).value = p.categoria;
-      r.getCell(9).value = p.estadoPed;
-      r.getCell(10).value = p.estadoGuia;
-      r.getCell(11).value = p.precio;
-      r.getCell(11).numFmt = '"$"#,##0';
-      [1,2,6,7,8,9,10].forEach(col => { r.getCell(col).alignment = { horizontal:'center' }; });
-      if(p.categoria==='confirmado') r.getCell(8).font = { bold:true, color:{argb:'FF10B981'} };
-      else if(p.categoria==='viajando') r.getCell(8).font = { bold:true, color:{argb:'FF3B82F6'} };
-      else if(p.categoria==='por_confirmar') r.getCell(8).font = { bold:true, color:{argb:'FFF59E0B'} };
-      if(p.paresPromo > 0) r.getCell(7).font = { bold:true, color:{argb:'FFEF4444'} };
-      row++;
-    });
-    if(!pares.detalle.length){
-      ws.mergeCells(`A${row}:${COL_END}${row}`);
-      ws.getCell(`A${row}`).value = 'Sin pedidos en este rango';
-      ws.getCell(`A${row}`).font = { italic:true, color:{argb:'FF64748B'} };
-      row++;
-    }
-    row++; row++; // espacio
-
-    // ── 💡 NOTA FINAL ──
-    ws.mergeCells(`A${row}:${COL_END}${row}`);
-    const nota = ws.getCell(`A${row}`);
-    nota.value = '💡  Todos los valores son editables. Para crear un gráfico nativo de Excel que se actualice automáticamente al cambiar los datos: selecciona el rango de cualquier tabla (por ejemplo, las columnas "Vendedor / Campaña" y "Gasto" de la sección Campañas) y usa el menú Insertar > Gráficos > Recomendados. Excel sugerirá el tipo de gráfico ideal para esos datos.';
-    nota.font = { italic:true, color:{argb:'FF475569'}, size:10 };
-    nota.alignment = { wrapText:true, vertical:'middle' };
-    nota.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFEF3C7'} };
-    nota.border = { top:{style:'thin', color:{argb:'FFF59E0B'}}, bottom:{style:'thin', color:{argb:'FFF59E0B'}}, left:{style:'thin', color:{argb:'FFF59E0B'}}, right:{style:'thin', color:{argb:'FFF59E0B'}} };
-    ws.getRow(row).height = 48;
 
     // ── Descargar ──
     const buffer = await wb.xlsx.writeBuffer();
@@ -9286,7 +9333,7 @@ async function exportarExcelColaborador(userId){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `reporte-${user.nombre.replace(/\s+/g,'_')}-${rango.inicioIso}_a_${rango.finIso}.xlsx`;
+    a.download = `${user.nombre.replace(/\s+/g,'_')} ${rango.etiqueta}.xlsx`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast('Excel descargado ✅');
