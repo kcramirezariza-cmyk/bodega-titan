@@ -9156,6 +9156,8 @@ async function exportarExcelColaborador(userId){
 
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Titan Botas';
+    // Forzar recálculo de fórmulas al abrir (evita que se vean en $0 hasta editar).
+    wb.calcProperties.fullCalcOnLoad = true;
     wb.created = new Date();
     const ws = wb.addWorksheet(user.nombre.slice(0,28) || 'Vendedor', { views:[{ showGridLines:false }] });
     ws.columns = [
@@ -9291,11 +9293,13 @@ async function exportarExcelColaborador(userId){
     ['G','H'].forEach(col=>{ const c=ws.getCell(`${col}${boxHdr}`); c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=solido(F_VERDE); c.border=bordeFino; });
     ['J','K'].forEach(col=>{ const c=ws.getCell(`${col}${boxHdr}`); c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=solido(F_VERDE2); c.border=bordeFino; });
 
-    const cellDetalExitosas = `H${boxHdr+3}`;
-    const cellValorComision = `K${boxHdr+1}`;
+    const cellDetalExitosas   = `H${boxHdr+3}`; // cantidad de pares detal entregados
+    const cellDetalDevol      = `H${boxHdr+4}`; // cantidad de pares detal devueltos
+    const cellCombosExitosas  = `H${boxHdr+5}`; // cantidad de combos entregados
+    const cellValorComision = `K${boxHdr+1}`; // valor POR UNIDAD (por par exitoso)
     const cellTotalComision = `K${boxHdr+2}`;
-    const cellDescuento     = `K${boxHdr+3}`;
-    const cellCombosTrios   = `K${boxHdr+4}`;
+    const cellDescuento     = `K${boxHdr+3}`; // descuento POR UNIDAD (por devolución)
+    const cellCombosTrios   = `K${boxHdr+4}`; // valor POR UNIDAD (por combo/trío exitoso)
 
     // Filas del resumen (label G, valor H). null = fórmula/auto; '' = manual (en blanco).
     const resumen = [
@@ -9318,13 +9322,16 @@ async function exportarExcelColaborador(userId){
       cl.fill = solido(F_GRISCLARO);
     });
 
-    // Filas de comisión (label J, valor K).
+    // Filas de comisión (label J, valor K). Los campos manuales son valores POR
+    // UNIDAD; el Excel multiplica por la cantidad correspondiente y suma en Neto.
+    //   Total comisión = Valor comisión (c/u) × Detal exitosas
+    //   Neto a pagar   = Total comisión + Combos(c/u)×Combos exitosas − Descuento(c/u)×Detal devoluciones
     const comision = [
-      ['Valor comision', ''],                                    // manual
+      ['Valor comision (c/u)', ''],                              // manual: por par exitoso
       ['Total de la comision', { formula:`${cellDetalExitosas}*${cellValorComision}` }],
-      ['Descuento por devoluciones', ''],                        // manual
-      ['Combos y trios', ''],                                    // manual
-      ['Neto a pagar', { formula:`${cellTotalComision}+${cellCombosTrios}-${cellDescuento}` }]
+      ['Descuento x devolucion (c/u)', ''],                      // manual: por devolución
+      ['Combos y trios (c/u)', ''],                              // manual: por combo/trío
+      ['Neto a pagar', { formula:`${cellTotalComision}+${cellCombosTrios}*${cellCombosExitosas}-${cellDescuento}*${cellDetalDevol}` }]
     ];
     comision.forEach((rowData,i)=>{
       const rr = boxHdr + 1 + i;
