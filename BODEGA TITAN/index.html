@@ -652,6 +652,7 @@ textarea{resize:vertical}
       <div class="section-header">
         <div class="section-title"><i class="bi bi-people-fill" style="color:var(--primary)"></i> Usuarios del Sistema</div>
         <div class="flex gap-8">
+          <button class="btn btn-sm" style="background:#10b981;color:#fff;font-weight:600" onclick="exportarExcelTodosColaboradores()" title="Descargar TODOS los colaboradores en un solo Excel (una hoja por cada uno, corte 28 a 27)"><i class="bi bi-file-earmark-excel-fill"></i> Descargar todos</button>
           <button class="btn btn-outline btn-sm" onclick="exportarDB()"><i class="bi bi-floppy-fill"></i> Backup</button>
           <button class="btn btn-primary" onclick="abrirModalUsuario()"><i class="bi bi-plus-lg"></i> Nuevo Usuario</button>
         </div>
@@ -685,7 +686,7 @@ textarea{resize:vertical}
                 <label>Tipo de venta</label>
                 <div style="display:flex;gap:8px;flex-wrap:wrap" id="tipo-venta-btns">
                   <button type="button" class="btn btn-outline btn-sm tventa-btn active" onclick="setTipoVenta('individual',this)">PRODUCTO</button>
-                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('combo',this)">Combo</button>
+                  <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('duo',this)">Dúo</button>
                   <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('trio',this)">Trío</button>
                   <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('cuarteto',this)">Cuarteto</button>
                   <button type="button" class="btn btn-outline btn-sm tventa-btn" onclick="setTipoVenta('cambio',this)">Cambio</button>
@@ -777,7 +778,7 @@ textarea{resize:vertical}
           </div>
           <div id="carrito-list"></div>
           <div id="combo-precio-g" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">Precio del <span id="combo-precio-tipo">combo</span> (total) *</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">Precio del <span id="combo-precio-tipo">dúo</span> (total) *</label>
             <input type="number" id="combo-precio" placeholder="Ej: 320000" min="0" oninput="onComboPrecioInput()">
             <div class="addr-status" id="combo-precio-status"></div>
           </div>
@@ -4985,13 +4986,14 @@ let carrito=[];
 // Combo = número de productos LIBRE (mínimo 2). Trío = 3 fijo. Cuarteto = 4 fijo.
 let tipoVenta='individual';
 let comboPrecio=0;
-const COMBO_N={individual:0,combo:2,trio:3,cuarteto:4};
+// 'combo' se conserva SOLO por compatibilidad con pedidos viejos (= dúo, 2).
+const COMBO_N={individual:0,duo:2,combo:2,trio:3,cuarteto:4};
 // Etiqueta visible por tipo de grupo (para badges y textos).
-const GRUPO_LABEL={combo:'COMBO',trio:'TRÍO',cuarteto:'CUARTETO'};
-// ¿Es una venta de grupo con un precio general único? (combo/trío/cuarteto)
-const esVentaGrupo=(t)=>t==='combo'||t==='trio'||t==='cuarteto';
-// ¿El grupo tiene un número FIJO de productos? (trío=3, cuarteto=4; combo es libre)
-const esGrupoFijo=(t)=>t==='trio'||t==='cuarteto';
+const GRUPO_LABEL={duo:'DÚO',combo:'DÚO',trio:'TRÍO',cuarteto:'CUARTETO'};
+// ¿Es una venta de grupo con un precio general único? (dúo/trío/cuarteto)
+const esVentaGrupo=(t)=>t==='duo'||t==='combo'||t==='trio'||t==='cuarteto';
+// Todos los grupos tienen un número FIJO de productos: dúo=2, trío=3, cuarteto=4.
+const esGrupoFijo=(t)=>t==='duo'||t==='combo'||t==='trio'||t==='cuarteto';
 // Validación de guía para pedidos tipo CAMBIO. Solo se pone en true
 // cuando trackClientSide() confirma que el paquete está entregado en Cúcuta.
 let cambioGuiaValida=false;
@@ -5078,12 +5080,11 @@ function setTipoVenta(t,btn){
     // marcamos en el pedido para identificarlo en reportes y tablas.
     if(hint){hint.style.display='block';hint.textContent='Cambio: descuenta stock como un pedido normal. Ingresa el precio del envío (o el valor que aplique).';}
     if(precioG) precioG.style.display='block';
-  } else if(t==='combo'){
-    if(hint){hint.style.display='block';hint.textContent='Combo: agrega los productos que quieras (mínimo 2) y pon UN precio general abajo, en el carrito.';}
-    if(precioG) precioG.style.display='none';
   } else {
+    // Grupos con número FIJO de productos: dúo=2, trío=3, cuarteto=4.
     const n=COMBO_N[t];
-    if(hint){hint.style.display='block';hint.textContent=`Agrega los ${n} productos del ${t}. El precio se pone una sola vez abajo, en el carrito.`;}
+    const nombre=(GRUPO_LABEL[t]||t).toLowerCase();
+    if(hint){hint.style.display='block';hint.textContent=`${nombre.charAt(0).toUpperCase()+nombre.slice(1)}: agrega EXACTAMENTE ${n} productos y pon UN precio general abajo, en el carrito.`;}
     if(precioG) precioG.style.display='none';
   }
   renderCarrito();
@@ -5282,17 +5283,12 @@ function renderCarrito(){
   const badge=document.getElementById('carrito-combo-badge');
   if(esVentaGrupo(tipoVenta)){
     if(comboG) comboG.style.display='block';
-    const tlabel=document.getElementById('combo-precio-tipo'); if(tlabel) tlabel.textContent=tipoVenta;
-    if(esGrupoFijo(tipoVenta)){
-      // Trío: 3 fijo. Cuarteto: 4 fijo.
-      const n=COMBO_N[tipoVenta];
-      if(badge){badge.style.display='inline-flex';badge.textContent=`${GRUPO_LABEL[tipoVenta]} ${carrito.length}/${n}`;}
-      if(carrito.length===n && comboPrecio>0){ unlockPedidoStep2(); } else { lockPedidoStep2(); }
-    } else {
-      // Combo: número LIBRE de productos (mínimo 2), un precio general.
-      if(badge){badge.style.display='inline-flex';badge.textContent=`COMBO ${carrito.length} producto${carrito.length===1?'':'s'}`;}
-      if(carrito.length>=2 && comboPrecio>0){ unlockPedidoStep2(); } else { lockPedidoStep2(); }
-    }
+    const tlabel=document.getElementById('combo-precio-tipo'); if(tlabel) tlabel.textContent=(GRUPO_LABEL[tipoVenta]||tipoVenta).toLowerCase();
+    // Todos los grupos tienen número FIJO: dúo=2, trío=3, cuarteto=4.
+    const n=COMBO_N[tipoVenta];
+    if(badge){badge.style.display='inline-flex';badge.textContent=`${GRUPO_LABEL[tipoVenta]} ${carrito.length}/${n}`;}
+    // El paso 2 (datos del cliente) SOLO se desbloquea con la cantidad EXACTA y precio.
+    if(carrito.length===n && comboPrecio>0){ unlockPedidoStep2(); } else { lockPedidoStep2(); }
   } else {
     if(comboG) comboG.style.display='none';
     if(badge){
@@ -5761,14 +5757,11 @@ function eliminarDuplicadosCancelados(pedNuevo){
 
 function registrarPedido(){
   if(!carrito.length){toast('Agrega al menos un producto al carrito');return;}
-  if(esGrupoFijo(tipoVenta)){
+  if(esVentaGrupo(tipoVenta)){
     const n=COMBO_N[tipoVenta];
-    if(carrito.length!==n){toast(`Un ${tipoVenta} debe tener exactamente ${n} productos.`);return;}
-    if(!comboPrecio||comboPrecio<=0){toast('Ingresa el precio del '+tipoVenta);return;}
-  }
-  if(tipoVenta==='combo'){
-    if(carrito.length<2){toast('Un combo debe tener al menos 2 productos.');return;}
-    if(!comboPrecio||comboPrecio<=0){toast('Ingresa el precio del combo');return;}
+    const nombre=(GRUPO_LABEL[tipoVenta]||tipoVenta).toLowerCase();
+    if(carrito.length!==n){toast(`⚠️ Un ${nombre} debe tener EXACTAMENTE ${n} productos. Tienes ${carrito.length}. Ajusta el carrito para poder continuar.`);return;}
+    if(!comboPrecio||comboPrecio<=0){toast('Ingresa el precio del '+nombre);return;}
   }
   if(tipoVenta==='cambio'){
     if(!cambioGuiaValida || !_cambioGuiaInfo){
@@ -6435,8 +6428,8 @@ function renderAdminPedidos(){
         ?`<div style="font-size:10px;color:#3b82f6;margin-top:2px" title="Precio sobre el registrado"><i class="bi bi-arrow-up-circle-fill"></i> Alto</div>`
         :'';
     const paresInfo=ped.cantidadPares&&ped.cantidadPares>1?`<div style="font-size:10px;color:var(--muted)">${ped.cantidadPares} pares</div>`:'';
-    const comboBadge=ped.tipoVenta==='combo'
-      ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo combo (varios productos a un precio único)"><i class="bi bi-box-seam-fill"></i> COMBO</span>`
+    const comboBadge=(ped.tipoVenta==='duo'||ped.tipoVenta==='combo')
+      ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo dúo (2 productos a un precio único)"><i class="bi bi-box-seam-fill"></i> DÚO</span>`
       :ped.tipoVenta==='trio'
         ?` <span class="badge badge-purple" style="font-size:9px;padding:2px 6px;margin-left:4px" title="Pedido tipo trío (3 productos a un precio único)"><i class="bi bi-boxes"></i> TRÍO</span>`
         :ped.tipoVenta==='cuarteto'
@@ -9154,6 +9147,253 @@ function _pagosTextoExcel(bucket){
 }
 function _fechaExcel(f){ if(!f) return null; const p=String(f).split('-').map(Number); return new Date(p[0], (p[1]||1)-1, p[2]||1); }
 
+// Construye UNA hoja de vendedor dentro del workbook `wb`. Reutilizable para el
+// reporte individual y para el de "todos los colaboradores en un solo archivo".
+function _construirHojaVendedor(wb, user, rango, guias){
+  const esAddi = fp => fp==='addi' || fp==='sistecredito';
+  const numGuia = pid => (guias.find(g=>g.pedidoId===pid)?.numero || '');
+  const grupoLabel = t => (GRUPO_LABEL[t] || 'DÚO');
+
+  const misPed = getPedidos()
+    .filter(p => p.vendedorId === user.id && _pedidoEnRango(p, rango))
+    .sort((a,b) => (a.fecha||'').localeCompare(b.fecha||'') || (a.ts||0)-(b.ts||0));
+
+  // Unitarios (VENTAS AL DETAL), grupos (dúos/tríos/cuartetos) y addi/sistecrédito.
+  const addiPed  = misPed.filter(p => esAddi(p.formaPago));
+  const grupoPed = misPed.filter(p => !esAddi(p.formaPago) && esVentaGrupo(p.tipoVenta));
+  const detalPed = misPed.filter(p => !esAddi(p.formaPago) && !esVentaGrupo(p.tipoVenta));
+
+  // ── Estilos ──
+  const F_ROJO='FFC00000', F_OSCURO='FF404040', F_MORADO='FF5B2C8D', F_VERDE='FF548235',
+        F_VERDE2='FF70AD47', F_VERDECLARO='FFE2EFDA', F_GRISCLARO='FFF2F2F2';
+  const bordeFino = { top:{style:'thin',color:{argb:'FFBFBFBF'}}, left:{style:'thin',color:{argb:'FFBFBFBF'}}, bottom:{style:'thin',color:{argb:'FFBFBFBF'}}, right:{style:'thin',color:{argb:'FFBFBFBF'}} };
+  const solido = argb => ({ type:'pattern', pattern:'solid', fgColor:{argb} });
+
+  // Nombre de hoja único y válido (máx 31, sin : \ / ? * [ ]).
+  let base=(user.nombre||'Vendedor').replace(/[:\\\/?*\[\]]/g,' ').trim().slice(0,28)||'Vendedor';
+  let name=base, k=2;
+  while(wb.getWorksheet(name)){ name=base.slice(0,25)+' '+k; k++; }
+  const ws = wb.addWorksheet(name, { views:[{ showGridLines:false }] });
+  ws.columns = [
+    { width:12 },{ width:16 },{ width:9 },{ width:13 },{ width:16 },
+    { width:20 },{ width:24 },{ width:28 },{ width:12 },{ width:24 },{ width:13 }
+  ];
+
+  // ── Título ──
+  ws.mergeCells('A1:K1');
+  const t = ws.getCell('A1');
+  t.value = 'VENTAS AL DETAL';
+  t.font = { bold:true, size:16, color:{argb:F_ROJO} };
+  t.alignment = { horizontal:'center', vertical:'middle' };
+  ws.getRow(1).height = 26;
+  ws.mergeCells('A2:K2');
+  const sub = ws.getCell('A2');
+  sub.value = `Asesor: ${user.nombre}   ·   Corte: ${rango.etiqueta}   ·   Generado: ${new Date().toLocaleString('es-CO')}`;
+  sub.font = { italic:true, size:10, color:{argb:'FF666666'} };
+  sub.alignment = { horizontal:'center' };
+
+  // ── Encabezado tabla VENTAS AL DETAL (unitarios) ──
+  const DETAL_HDR = ['Fecha','Asesor','Cantidad','Venta','Guia','Estado','Pagos','Destinatario','Exitosas','Devolucion','Procesamiento'];
+  const hdrRow = 4;
+  DETAL_HDR.forEach((txt,i)=>{
+    const c = ws.getRow(hdrRow).getCell(i+1);
+    c.value = txt; c.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
+    c.fill = solido(F_OSCURO); c.alignment = { horizontal:'center', vertical:'middle', wrapText:true }; c.border = bordeFino;
+  });
+  ws.getRow(hdrRow).height = 24;
+
+  // ── Filas de detal ──
+  let r = hdrRow + 1;
+  const detalFirst = r;
+  detalPed.forEach(p => {
+    const bucket = _bucketExcel(p);
+    const n = p.cantidadPares || 1;
+    // Botas externas: se venden pero NO pagan comisión → no cuentan en los flags.
+    const items = Array.isArray(p.items) && p.items.length ? p.items : null;
+    const nCom = items ? items.filter(it=>!it.externa).reduce((s,it)=>s+(it.cantidad||0),0)
+                       : (p.botaExterna || p.tipoVenta==='externa' ? 0 : n);
+    const row = ws.getRow(r);
+    row.getCell(1).value = _fechaExcel(p.fecha); row.getCell(1).numFmt = 'dd/mm/yyyy';
+    row.getCell(2).value = p.vendedorNombre || user.nombre;
+    row.getCell(3).value = n;
+    row.getCell(4).value = p.precioVenta || 0; row.getCell(4).numFmt = '"$"#,##0';
+    row.getCell(5).value = numGuia(p.id);
+    row.getCell(6).value = _estadoTextoExcel(p);
+    row.getCell(7).value = _pagosTextoExcel(bucket);
+    row.getCell(8).value = p.cliente?.nombre || '';
+    row.getCell(9).value  = (bucket==='exitosa'       && nCom>0) ? nCom : null;
+    row.getCell(10).value = (bucket==='devolucion'    && nCom>0) ? nCom : null;
+    row.getCell(11).value = (bucket==='procesamiento' && nCom>0) ? nCom : null;
+    for(let c=1;c<=11;c++){ row.getCell(c).border = bordeFino; }
+    [1,3,5,9,10,11].forEach(c=>row.getCell(c).alignment={horizontal:'center'});
+    r++;
+  });
+  const detalLast = r - 1;
+  const hayDetal = detalLast >= detalFirst;
+  const detalTotalRow = r;
+  const rowT = ws.getRow(detalTotalRow);
+  rowT.getCell(1).value = 'Total'; rowT.getCell(1).font = { bold:true };
+  rowT.getCell(3).value  = hayDetal ? { formula:`SUM(C${detalFirst}:C${detalLast})` } : 0;
+  rowT.getCell(4).value  = hayDetal ? { formula:`SUM(D${detalFirst}:D${detalLast})` } : 0; rowT.getCell(4).numFmt='"$"#,##0';
+  rowT.getCell(9).value  = hayDetal ? { formula:`SUM(I${detalFirst}:I${detalLast})` } : 0;
+  rowT.getCell(10).value = hayDetal ? { formula:`SUM(J${detalFirst}:J${detalLast})` } : 0;
+  rowT.getCell(11).value = hayDetal ? { formula:`SUM(K${detalFirst}:K${detalLast})` } : 0;
+  for(let c=1;c<=11;c++){ rowT.getCell(c).fill=solido(F_GRISCLARO); rowT.getCell(c).border=bordeFino; rowT.getCell(c).font=Object.assign({bold:true}, rowT.getCell(c).font||{}); }
+  [3,9,10,11].forEach(c=>rowT.getCell(c).alignment={horizontal:'center'});
+
+  // ── Tabla DÚOS / TRÍOS / CUARTETOS (ventas de grupo) ──
+  r = detalTotalRow + 3;
+  ws.mergeCells(`A${r}:K${r}`);
+  const gt = ws.getCell(`A${r}`);
+  gt.value = 'DÚOS / TRÍOS / CUARTETOS';
+  gt.font = { bold:true, size:13, color:{argb:F_MORADO} };
+  gt.alignment = { horizontal:'center' };
+  r++;
+  const GRUPO_HDR = ['Fecha','Tipo','Pares','Precio','Guia','Estado','Pagos','Destinatario','Exitosas','Devolucion','Procesamiento'];
+  const grupoHdrRow = r;
+  GRUPO_HDR.forEach((txt,i)=>{
+    const c = ws.getRow(grupoHdrRow).getCell(i+1);
+    c.value = txt; c.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
+    c.fill = solido(F_MORADO); c.alignment = { horizontal:'center', vertical:'middle', wrapText:true }; c.border = bordeFino;
+  });
+  ws.getRow(grupoHdrRow).height = 24;
+  r++;
+  const grupoFirst = r;
+  grupoPed.forEach(p => {
+    const bucket = _bucketExcel(p);
+    const n = p.cantidadPares || 1;
+    const row = ws.getRow(r);
+    row.getCell(1).value = _fechaExcel(p.fecha); row.getCell(1).numFmt = 'dd/mm/yyyy';
+    row.getCell(2).value = grupoLabel(p.tipoVenta);
+    row.getCell(3).value = n;
+    row.getCell(4).value = p.precioVenta || p.comboPrecio || 0; row.getCell(4).numFmt = '"$"#,##0';
+    row.getCell(5).value = numGuia(p.id);
+    row.getCell(6).value = _estadoTextoExcel(p);
+    row.getCell(7).value = _pagosTextoExcel(bucket);
+    row.getCell(8).value = p.cliente?.nombre || '';
+    row.getCell(9).value  = bucket==='exitosa'       ? n : null;
+    row.getCell(10).value = bucket==='devolucion'    ? n : null;
+    row.getCell(11).value = bucket==='procesamiento' ? n : null;
+    for(let c=1;c<=11;c++){ row.getCell(c).border = bordeFino; }
+    [1,2,3,5,9,10,11].forEach(c=>row.getCell(c).alignment={horizontal:'center'});
+    r++;
+  });
+  const grupoLast = r - 1;
+  const hayGrupo = grupoLast >= grupoFirst;
+  const grupoTotalRow = r;
+  const rowG = ws.getRow(grupoTotalRow);
+  rowG.getCell(1).value = 'Total'; rowG.getCell(1).font = { bold:true };
+  rowG.getCell(3).value  = hayGrupo ? { formula:`SUM(C${grupoFirst}:C${grupoLast})` } : 0;
+  rowG.getCell(4).value  = hayGrupo ? { formula:`SUM(D${grupoFirst}:D${grupoLast})` } : 0; rowG.getCell(4).numFmt='"$"#,##0';
+  rowG.getCell(9).value  = hayGrupo ? { formula:`SUM(I${grupoFirst}:I${grupoLast})` } : 0;
+  rowG.getCell(10).value = hayGrupo ? { formula:`SUM(J${grupoFirst}:J${grupoLast})` } : 0;
+  rowG.getCell(11).value = hayGrupo ? { formula:`SUM(K${grupoFirst}:K${grupoLast})` } : 0;
+  for(let c=1;c<=11;c++){ rowG.getCell(c).fill=solido(F_GRISCLARO); rowG.getCell(c).border=bordeFino; rowG.getCell(c).font=Object.assign({bold:true}, rowG.getCell(c).font||{}); }
+  [3,9,10,11].forEach(c=>rowG.getCell(c).alignment={horizontal:'center'});
+
+  // ── Tabla ADDI - SISTECREDITO ──
+  r = grupoTotalRow + 3;
+  ws.mergeCells(`A${r}:E${r}`);
+  const at = ws.getCell(`A${r}`);
+  at.value = 'ADDI - SISTECREDITO';
+  at.font = { bold:true, size:13, color:{argb:F_ROJO} };
+  at.alignment = { horizontal:'center' };
+  r++;
+  const ADDI_HDR = ['Fecha','Cliente','Credito','Pares','Asesor'];
+  const addiHdrRow = r;
+  ADDI_HDR.forEach((txt,i)=>{
+    const c = ws.getRow(addiHdrRow).getCell(i+1);
+    c.value = txt; c.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
+    c.fill = solido(F_VERDE); c.alignment = { horizontal:'center' }; c.border = bordeFino;
+  });
+  r++;
+  const addiFirst = r;
+  addiPed.forEach(p => {
+    const row = ws.getRow(r);
+    row.getCell(1).value = _fechaExcel(p.fecha); row.getCell(1).numFmt = 'dd/mm/yyyy';
+    row.getCell(2).value = p.cliente?.nombre || '';
+    row.getCell(3).value = p.formaPago==='addi' ? 'Addi' : 'Sistecredito';
+    row.getCell(4).value = p.cantidadPares || 1;
+    row.getCell(5).value = p.vendedorNombre || user.nombre;
+    for(let c=1;c<=5;c++){ row.getCell(c).border = bordeFino; }
+    [1,3,4].forEach(c=>row.getCell(c).alignment={horizontal:'center'});
+    r++;
+  });
+  const addiLast = r - 1;
+  const hayAddi = addiLast >= addiFirst;
+  const addiTotalRow = r;
+  const rowA = ws.getRow(addiTotalRow);
+  rowA.getCell(1).value = 'Total'; rowA.getCell(1).font = { bold:true };
+  rowA.getCell(4).value = hayAddi ? { formula:`SUM(D${addiFirst}:D${addiLast})` } : 0;
+  for(let c=1;c<=5;c++){ rowA.getCell(c).fill=solido(F_GRISCLARO); rowA.getCell(c).border=bordeFino; rowA.getCell(c).font=Object.assign({bold:true}, rowA.getCell(c).font||{}); }
+  rowA.getCell(4).alignment = { horizontal:'center' };
+
+  // ── Cuadro RESUMEN (G:H) y COMISIÓN (J:K), lado a lado ──
+  const boxHdr = addiTotalRow + 2;
+  ws.getCell(`G${boxHdr}`).value = 'Vendedor';
+  ws.getCell(`H${boxHdr}`).value = user.nombre;
+  ws.getCell(`J${boxHdr}`).value = 'Item';
+  ws.getCell(`K${boxHdr}`).value = 'Valor';
+  ['G','H'].forEach(col=>{ const c=ws.getCell(`${col}${boxHdr}`); c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=solido(F_VERDE); c.border=bordeFino; });
+  ['J','K'].forEach(col=>{ const c=ws.getCell(`${col}${boxHdr}`); c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=solido(F_VERDE2); c.border=bordeFino; });
+
+  const cellDetalExitosas  = `H${boxHdr+3}`;
+  const cellDetalDevol     = `H${boxHdr+4}`;
+  const cellCombosExitosas = `H${boxHdr+5}`;
+  const cellValorComision = `K${boxHdr+1}`;
+  const cellTotalComision = `K${boxHdr+2}`;
+  const cellDescuento     = `K${boxHdr+3}`;
+  const cellCombosTrios   = `K${boxHdr+4}`;
+
+  // Combos exitosas/devoluciones ahora salen de la tabla de grupo (fórmula).
+  const resumen = [
+    ['Ventas del mes', null],
+    ['Ventas del mes anterior', null],
+    ['Detal exitosas', hayDetal ? { formula:`I${detalTotalRow}` } : 0],
+    ['Detal devoluciones', hayDetal ? { formula:`J${detalTotalRow}` } : 0],
+    ['Combos exitosas', hayGrupo ? { formula:`I${grupoTotalRow}` } : 0],
+    ['Combos devoluciones', hayGrupo ? { formula:`J${grupoTotalRow}` } : 0],
+    ['Sistecredito', hayAddi ? { formula:`D${addiTotalRow}` } : 0],
+    ['En procesamiento', { formula: hayGrupo ? `K${detalTotalRow}+K${grupoTotalRow}` : `K${detalTotalRow}` }]
+  ];
+  resumen.forEach((rowData,i)=>{
+    const rr = boxHdr + 1 + i;
+    const cl = ws.getCell(`G${rr}`), cv = ws.getCell(`H${rr}`);
+    cl.value = rowData[0];
+    if(rowData[1] !== null) cv.value = rowData[1];
+    cl.border = bordeFino; cv.border = bordeFino; cv.alignment = { horizontal:'center' }; cl.fill = solido(F_GRISCLARO);
+  });
+
+  // Comisión: valores POR UNIDAD; el Neto multiplica por la cantidad y suma.
+  const comision = [
+    ['Valor comision (c/u)', ''],
+    ['Total de la comision', { formula:`${cellDetalExitosas}*${cellValorComision}` }],
+    ['Descuento x devolucion (c/u)', ''],
+    ['Combos y trios (c/u)', ''],
+    ['Neto a pagar', { formula:`${cellTotalComision}+${cellCombosTrios}*${cellCombosExitosas}-${cellDescuento}*${cellDetalDevol}` }]
+  ];
+  comision.forEach((rowData,i)=>{
+    const rr = boxHdr + 1 + i;
+    const cl = ws.getCell(`J${rr}`), cv = ws.getCell(`K${rr}`);
+    cl.value = rowData[0];
+    if(rowData[1] !== '') cv.value = rowData[1];
+    cl.border = bordeFino; cv.border = bordeFino; cv.numFmt = '"$"#,##0'; cv.alignment = { horizontal:'right' }; cl.fill = solido(F_VERDECLARO);
+    if(rowData[0]==='Neto a pagar'){ cl.font={bold:true}; cv.font={bold:true}; }
+  });
+}
+
+// Descarga un workbook ya construido.
+async function _descargarWb(wb, filename){
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Reporte de UN colaborador (una hoja).
 async function exportarExcelColaborador(userId){
   if(CU?.rol !== 'admin'){ toast('Solo el administrador puede descargar este reporte'); return; }
   if(typeof ExcelJS === 'undefined'){ toast('Librería ExcelJS no cargada — refresca la página'); return; }
@@ -9162,242 +9402,37 @@ async function exportarExcelColaborador(userId){
   toast('Generando reporte de ' + user.nombre + '…');
   try {
     const rango = _rangoCorte28();
-    const guias = getGuias();
-    const esAddi = fp => fp==='addi' || fp==='sistecredito';
-    const numGuia = pid => (guias.find(g=>g.pedidoId===pid)?.numero || '');
-
-    // Pedidos del vendedor dentro del corte.
-    const misPed = getPedidos()
-      .filter(p => p.vendedorId === userId && _pedidoEnRango(p, rango))
-      .sort((a,b) => (a.fecha||'').localeCompare(b.fecha||'') || (a.ts||0)-(b.ts||0));
-
-    // Separar: ADDI/SISTECREDITO (por forma de pago), combos (grupo), y detal (el resto).
-    const addiPed  = misPed.filter(p => esAddi(p.formaPago));
-    const comboPed = misPed.filter(p => !esAddi(p.formaPago) && esVentaGrupo(p.tipoVenta));
-    const detalPed = misPed.filter(p => !esAddi(p.formaPago) && !esVentaGrupo(p.tipoVenta));
-
-    // Conteos de combos (auto, según lo pedido) — pares entregados/devueltos.
-    let combosExitosas=0, combosDevoluciones=0;
-    comboPed.forEach(p => {
-      const b=_bucketExcel(p), n=p.cantidadPares||1;
-      if(b==='exitosa') combosExitosas+=n; else if(b==='devolucion') combosDevoluciones+=n;
-    });
-
-    // ── Estilos ──
-    const F_ROJO   = 'FFC00000';
-    const F_OSCURO = 'FF404040';
-    const F_VERDE  = 'FF548235';
-    const F_VERDE2 = 'FF70AD47';
-    const F_VERDECLARO = 'FFE2EFDA';
-    const F_GRISCLARO  = 'FFF2F2F2';
-    const bordeFino = { top:{style:'thin',color:{argb:'FFBFBFBF'}}, left:{style:'thin',color:{argb:'FFBFBFBF'}}, bottom:{style:'thin',color:{argb:'FFBFBFBF'}}, right:{style:'thin',color:{argb:'FFBFBFBF'}} };
-    const solido = argb => ({ type:'pattern', pattern:'solid', fgColor:{argb} });
-
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'Titan Botas';
-    // Forzar recálculo de fórmulas al abrir (evita que se vean en $0 hasta editar).
+    wb.creator = 'Titan Botas'; wb.created = new Date();
     wb.calcProperties.fullCalcOnLoad = true;
-    wb.created = new Date();
-    const ws = wb.addWorksheet(user.nombre.slice(0,28) || 'Vendedor', { views:[{ showGridLines:false }] });
-    ws.columns = [
-      { width:12 },{ width:16 },{ width:9 },{ width:13 },{ width:16 },
-      { width:20 },{ width:24 },{ width:28 },{ width:12 },{ width:24 },{ width:13 }
-    ];
-
-    // ── Título ──
-    ws.mergeCells('A1:K1');
-    const t = ws.getCell('A1');
-    t.value = 'VENTAS AL DETAL';
-    t.font = { bold:true, size:16, color:{argb:F_ROJO} };
-    t.alignment = { horizontal:'center', vertical:'middle' };
-    ws.getRow(1).height = 26;
-    ws.mergeCells('A2:K2');
-    const sub = ws.getCell('A2');
-    sub.value = `Asesor: ${user.nombre}   ·   Corte: ${rango.etiqueta}   ·   Generado: ${new Date().toLocaleString('es-CO')}`;
-    sub.font = { italic:true, size:10, color:{argb:'FF666666'} };
-    sub.alignment = { horizontal:'center' };
-
-    // ── Encabezado tabla VENTAS AL DETAL ──
-    const DETAL_HDR = ['Fecha','Asesor','Cantidad','Venta','Guia','Estado','Pagos','Destinatario','Exitosas','Devolucion','Procesamiento'];
-    const hdrRow = 4;
-    DETAL_HDR.forEach((txt,i)=>{
-      const c = ws.getRow(hdrRow).getCell(i+1);
-      c.value = txt;
-      c.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
-      c.fill = solido(F_OSCURO);
-      c.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
-      c.border = bordeFino;
-    });
-    ws.getRow(hdrRow).height = 24;
-
-    // ── Filas de detal ──
-    let r = hdrRow + 1;
-    const detalFirst = r;
-    detalPed.forEach(p => {
-      const bucket = _bucketExcel(p);
-      const n = p.cantidadPares || 1;
-      // Pares que SÍ generan comisión = excluyen las botas externas (que se
-      // venden pero no pagan comisión). Un pedido 100% externo → nCom = 0, así
-      // sus columnas Exitosas/Devolución/Procesamiento quedan en blanco y no
-      // suman a la base de comisión (Detal exitosas). La Cantidad y la Venta sí
-      // reflejan la venta completa.
-      const items = Array.isArray(p.items) && p.items.length ? p.items : null;
-      const nCom = items ? items.filter(it=>!it.externa).reduce((s,it)=>s+(it.cantidad||0),0)
-                         : (p.botaExterna || p.tipoVenta==='externa' ? 0 : n);
-      const row = ws.getRow(r);
-      row.getCell(1).value = _fechaExcel(p.fecha);
-      row.getCell(1).numFmt = 'dd/mm/yyyy';
-      row.getCell(2).value = p.vendedorNombre || user.nombre;
-      row.getCell(3).value = n;
-      row.getCell(4).value = p.precioVenta || 0;
-      row.getCell(4).numFmt = '"$"#,##0';
-      row.getCell(5).value = numGuia(p.id);
-      row.getCell(6).value = _estadoTextoExcel(p);
-      row.getCell(7).value = _pagosTextoExcel(bucket);
-      row.getCell(8).value = p.cliente?.nombre || '';
-      row.getCell(9).value  = (bucket==='exitosa'       && nCom>0) ? nCom : null;
-      row.getCell(10).value = (bucket==='devolucion'    && nCom>0) ? nCom : null;
-      row.getCell(11).value = (bucket==='procesamiento' && nCom>0) ? nCom : null;
-      for(let c=1;c<=11;c++){ row.getCell(c).border = bordeFino; row.getCell(c).font = row.getCell(c).font || { size:10 }; }
-      [1,3,5,9,10,11].forEach(c=>row.getCell(c).alignment={horizontal:'center'});
-      r++;
-    });
-    const detalLast = r - 1;
-    const hayDetal = detalLast >= detalFirst;
-
-    // ── Fila TOTAL de detal ──
-    const detalTotalRow = r;
-    const rowT = ws.getRow(detalTotalRow);
-    rowT.getCell(1).value = 'Total';
-    rowT.getCell(1).font = { bold:true };
-    rowT.getCell(3).value = hayDetal ? { formula:`SUM(C${detalFirst}:C${detalLast})` } : 0;
-    rowT.getCell(4).value = hayDetal ? { formula:`SUM(D${detalFirst}:D${detalLast})` } : 0;
-    rowT.getCell(4).numFmt = '"$"#,##0';
-    rowT.getCell(9).value  = hayDetal ? { formula:`SUM(I${detalFirst}:I${detalLast})` } : 0;
-    rowT.getCell(10).value = hayDetal ? { formula:`SUM(J${detalFirst}:J${detalLast})` } : 0;
-    rowT.getCell(11).value = hayDetal ? { formula:`SUM(K${detalFirst}:K${detalLast})` } : 0;
-    for(let c=1;c<=11;c++){ rowT.getCell(c).fill = solido(F_GRISCLARO); rowT.getCell(c).border = bordeFino; rowT.getCell(c).font = Object.assign({bold:true}, rowT.getCell(c).font||{}); }
-    [3,9,10,11].forEach(c=>rowT.getCell(c).alignment={horizontal:'center'});
-
-    // ── Tabla ADDI - SISTECREDITO ──
-    r = detalTotalRow + 3;
-    ws.mergeCells(`A${r}:E${r}`);
-    const at = ws.getCell(`A${r}`);
-    at.value = 'ADDI - SISTECREDITO';
-    at.font = { bold:true, size:13, color:{argb:F_ROJO} };
-    at.alignment = { horizontal:'center' };
-    r++;
-    const ADDI_HDR = ['Fecha','Cliente','Credito','Pares','Asesor'];
-    const addiHdrRow = r;
-    ADDI_HDR.forEach((txt,i)=>{
-      const c = ws.getRow(addiHdrRow).getCell(i+1);
-      c.value = txt;
-      c.font = { bold:true, color:{argb:'FFFFFFFF'}, size:10 };
-      c.fill = solido(F_VERDE);
-      c.alignment = { horizontal:'center' };
-      c.border = bordeFino;
-    });
-    r++;
-    const addiFirst = r;
-    addiPed.forEach(p => {
-      const row = ws.getRow(r);
-      row.getCell(1).value = _fechaExcel(p.fecha);
-      row.getCell(1).numFmt = 'dd/mm/yyyy';
-      row.getCell(2).value = p.cliente?.nombre || '';
-      row.getCell(3).value = p.formaPago==='addi' ? 'Addi' : 'Sistecredito';
-      row.getCell(4).value = p.cantidadPares || 1;
-      row.getCell(5).value = p.vendedorNombre || user.nombre;
-      for(let c=1;c<=5;c++){ row.getCell(c).border = bordeFino; }
-      [1,3,4].forEach(c=>row.getCell(c).alignment={horizontal:'center'});
-      r++;
-    });
-    const addiLast = r - 1;
-    const hayAddi = addiLast >= addiFirst;
-    const addiTotalRow = r;
-    const rowA = ws.getRow(addiTotalRow);
-    rowA.getCell(1).value = 'Total';
-    rowA.getCell(1).font = { bold:true };
-    rowA.getCell(4).value = hayAddi ? { formula:`SUM(D${addiFirst}:D${addiLast})` } : 0;
-    for(let c=1;c<=5;c++){ rowA.getCell(c).fill = solido(F_GRISCLARO); rowA.getCell(c).border = bordeFino; rowA.getCell(c).font = Object.assign({bold:true}, rowA.getCell(c).font||{}); }
-    rowA.getCell(4).alignment = { horizontal:'center' };
-
-    // ── Cuadro RESUMEN (G:H) y COMISIÓN (J:K), lado a lado ──
-    const boxHdr = addiTotalRow + 2;
-    // Resumen
-    ws.getCell(`G${boxHdr}`).value = 'Vendedor';
-    ws.getCell(`H${boxHdr}`).value = user.nombre;
-    // Comisión
-    ws.getCell(`J${boxHdr}`).value = 'Item';
-    ws.getCell(`K${boxHdr}`).value = 'Valor';
-    ['G','H'].forEach(col=>{ const c=ws.getCell(`${col}${boxHdr}`); c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=solido(F_VERDE); c.border=bordeFino; });
-    ['J','K'].forEach(col=>{ const c=ws.getCell(`${col}${boxHdr}`); c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=solido(F_VERDE2); c.border=bordeFino; });
-
-    const cellDetalExitosas   = `H${boxHdr+3}`; // cantidad de pares detal entregados
-    const cellDetalDevol      = `H${boxHdr+4}`; // cantidad de pares detal devueltos
-    const cellCombosExitosas  = `H${boxHdr+5}`; // cantidad de combos entregados
-    const cellValorComision = `K${boxHdr+1}`; // valor POR UNIDAD (por par exitoso)
-    const cellTotalComision = `K${boxHdr+2}`;
-    const cellDescuento     = `K${boxHdr+3}`; // descuento POR UNIDAD (por devolución)
-    const cellCombosTrios   = `K${boxHdr+4}`; // valor POR UNIDAD (por combo/trío exitoso)
-
-    // Filas del resumen (label G, valor H). null = fórmula/auto; '' = manual (en blanco).
-    const resumen = [
-      ['Ventas del mes', null],
-      ['Ventas del mes anterior', null],
-      ['Detal exitosas', hayDetal ? { formula:`I${detalTotalRow}` } : 0],
-      ['Detal devoluciones', hayDetal ? { formula:`J${detalTotalRow}` } : 0],
-      ['Combos exitosas', combosExitosas],
-      ['Combos devoluciones', combosDevoluciones],
-      ['Sistecredito', hayAddi ? { formula:`D${addiTotalRow}` } : 0],
-      ['En procesamiento', hayDetal ? { formula:`K${detalTotalRow}` } : 0]
-    ];
-    resumen.forEach((rowData,i)=>{
-      const rr = boxHdr + 1 + i;
-      const cl = ws.getCell(`G${rr}`), cv = ws.getCell(`H${rr}`);
-      cl.value = rowData[0];
-      if(rowData[1] !== null) cv.value = rowData[1];
-      cl.border = bordeFino; cv.border = bordeFino;
-      cv.alignment = { horizontal:'center' };
-      cl.fill = solido(F_GRISCLARO);
-    });
-
-    // Filas de comisión (label J, valor K). Los campos manuales son valores POR
-    // UNIDAD; el Excel multiplica por la cantidad correspondiente y suma en Neto.
-    //   Total comisión = Valor comisión (c/u) × Detal exitosas
-    //   Neto a pagar   = Total comisión + Combos(c/u)×Combos exitosas − Descuento(c/u)×Detal devoluciones
-    const comision = [
-      ['Valor comision (c/u)', ''],                              // manual: por par exitoso
-      ['Total de la comision', { formula:`${cellDetalExitosas}*${cellValorComision}` }],
-      ['Descuento x devolucion (c/u)', ''],                      // manual: por devolución
-      ['Combos y trios (c/u)', ''],                              // manual: por combo/trío
-      ['Neto a pagar', { formula:`${cellTotalComision}+${cellCombosTrios}*${cellCombosExitosas}-${cellDescuento}*${cellDetalDevol}` }]
-    ];
-    comision.forEach((rowData,i)=>{
-      const rr = boxHdr + 1 + i;
-      const cl = ws.getCell(`J${rr}`), cv = ws.getCell(`K${rr}`);
-      cl.value = rowData[0];
-      if(rowData[1] !== '') cv.value = rowData[1];
-      cl.border = bordeFino; cv.border = bordeFino;
-      cv.numFmt = '"$"#,##0';
-      cv.alignment = { horizontal:'right' };
-      cl.fill = solido(F_VERDECLARO);
-      if(rowData[0]==='Neto a pagar'){ cl.font={bold:true}; cv.font={bold:true}; }
-    });
-
-    // ── Descargar ──
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${user.nombre.replace(/\s+/g,'_')} ${rango.etiqueta}.xlsx`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    _construirHojaVendedor(wb, user, rango, getGuias());
+    await _descargarWb(wb, `${user.nombre.replace(/\s+/g,'_')} ${rango.etiqueta}.xlsx`);
     toast('Excel descargado ✅');
   } catch(err){
     console.error('exportarExcelColaborador falló:', err);
-    const msg = (err && (err.message || err.toString())) || 'desconocido';
-    toast('Error: ' + msg.slice(0,140));
+    toast('Error: ' + (((err && (err.message || err.toString())) || 'desconocido')).slice(0,140));
+  }
+}
+
+// Reporte de TODOS los colaboradores en UN solo archivo (una hoja por cada uno).
+async function exportarExcelTodosColaboradores(){
+  if(CU?.rol !== 'admin'){ toast('Solo el administrador puede descargar este reporte'); return; }
+  if(typeof ExcelJS === 'undefined'){ toast('Librería ExcelJS no cargada — refresca la página'); return; }
+  const users = getUsers().filter(u => u.rol !== 'admin').sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  if(!users.length){ toast('No hay colaboradores para reportar'); return; }
+  toast(`Generando reporte de ${users.length} colaboradores…`);
+  try {
+    const rango = _rangoCorte28();
+    const guias = getGuias();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Titan Botas'; wb.created = new Date();
+    wb.calcProperties.fullCalcOnLoad = true;
+    users.forEach(u => _construirHojaVendedor(wb, u, rango, guias));
+    await _descargarWb(wb, `Reporte colaboradores ${rango.etiqueta}.xlsx`);
+    toast('Excel de todos los colaboradores descargado ✅');
+  } catch(err){
+    console.error('exportarExcelTodosColaboradores falló:', err);
+    toast('Error: ' + (((err && (err.message || err.toString())) || 'desconocido')).slice(0,140));
   }
 }
 
