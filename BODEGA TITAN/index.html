@@ -4910,28 +4910,30 @@ function onPedVarChange(preservarEntrada){
   const fotoHtml=fotoVar
     ? `<img src="${fotoVar}" alt="${v.talla} ${v.color}" onclick="abrirLightboxSrc('${fotoVar.replace(/'/g,"\\'")}')" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid var(--border);cursor:zoom-in;flex-shrink:0">`
     : `<div style="width:64px;height:64px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#cbd5e1;flex-shrink:0"><i class="bi bi-image" style="font-size:22px"></i></div>`;
+  // BACKORDER: el selector de pares y el botón "Agregar al carrito" se muestran
+  // SIEMPRE, aunque el stock esté en 0 o negativo. La diferencia es solo el
+  // aviso. Los pares sin respaldo físico se marcan "POR REPONER" al registrar y
+  // se cubren cuando el proveedor entregue.
+  document.getElementById('ped-var-g2').style.display='block';
+  const ci=document.getElementById('ped-pares-custom');
+  _maxDisponibleActual=999; // tope sano contra errores de tecleo (el backorder se permite)
+  ci.max='999';
   if(stock>0){
     disp.innerHTML=`<div style="background:#d1fae5;border:1px solid #10b981;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px">${fotoHtml}<div style="flex:1"><strong style="color:#065f46">Disponible</strong><div style="font-size:12px;color:#065f46">Talla ${v.talla} · ${v.color} — ${stock} unidades en stock</div></div><span style="font-size:18px;color:#10b981"><i class="bi bi-check-circle-fill"></i></span></div>`;
-    // Mostrar selector de pares y precio — no desbloquea step2 aún (eso lo hace el carrito)
-    document.getElementById('ped-var-g2').style.display='block';
-    const ci=document.getElementById('ped-pares-custom');
-    ci.max=String(stock);
-    // Solo limpiamos precio/cantidad cuando el colaborador CAMBIA de talla.
-    // En un refresco en vivo (preservarEntrada) respetamos lo que ya escribió.
-    if(!preservarEntrada){
-      paresSeleccionados=1;
-      document.querySelectorAll('.par-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
-      ci.style.display='none';
-      ci.value='';
-      document.getElementById('cart-precio').value='';
-      document.getElementById('cart-precio-status').innerHTML='';
-    }
-    validarCartPrecio();
   } else {
-    disp.innerHTML=`<div style="background:#fee2e2;border:1px solid #ef4444;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px">${fotoHtml}<div style="flex:1"><strong style="color:#991b1b">Sin disponibilidad</strong><div style="font-size:12px;color:#991b1b">Talla ${v.talla} · ${v.color} — sin stock disponible (puede que otro colaborador ya lo tenga en su carrito). No se puede registrar el pedido.</div></div><span style="font-size:18px;color:#ef4444"><i class="bi bi-x-circle-fill"></i></span></div>`;
-    lockPedidoStep2();
-    document.getElementById('ped-var-g2').style.display='none';
+    disp.innerHTML=`<div style="background:#fff7ed;border:1px solid #f97316;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px">${fotoHtml}<div style="flex:1"><strong style="color:#9a3412"><i class="bi bi-exclamation-octagon-fill"></i> Sin stock físico — POR REPONER</strong><div style="font-size:12px;color:#9a3412">Talla ${v.talla} · ${v.color} — no hay unidades en físico, pero <strong>SÍ puedes registrar el pedido</strong>. Se marcará "por reponer" y bodega lo entrega cuando el proveedor reponga (prioridad por orden de pedido).</div></div><span style="font-size:18px;color:#f97316"><i class="bi bi-box-seam"></i></span></div>`;
   }
+  // Solo limpiamos precio/cantidad cuando el colaborador CAMBIA de talla.
+  // En un refresco en vivo (preservarEntrada) respetamos lo que ya escribió.
+  if(!preservarEntrada){
+    paresSeleccionados=1;
+    document.querySelectorAll('.par-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+    ci.style.display='none';
+    ci.value='';
+    document.getElementById('cart-precio').value='';
+    document.getElementById('cart-precio-status').innerHTML='';
+  }
+  validarCartPrecio();
 }
 
 function lockPedidoStep2(){
@@ -5390,7 +5392,7 @@ function validarTelefono(inp){
   if(v.length===10 && /^3\d{9}$/.test(v)){
     st.innerHTML='<span class="addr-ok"><i class="bi bi-check-circle-fill"></i> Celular colombiano válido (10/10)</span>';
   } else if(v.length===10){
-    st.innerHTML='<span class="addr-warn"><i class="bi bi-exclamation-triangle-fill"></i> 10 dígitos OK, pero un celular colombiano normalmente empieza en 3</span>';
+    st.innerHTML='<span class="addr-err"><i class="bi bi-x-circle-fill"></i> El teléfono debe empezar en 3 (celular colombiano). Corrígelo para poder registrar.</span>';
   } else {
     st.innerHTML=`<span class="addr-err"><i class="bi bi-x-circle-fill"></i> Faltan ${10-v.length} dígito${10-v.length===1?'':'s'} — el teléfono debe tener 10 dígitos</span>`;
   }
@@ -5796,10 +5798,15 @@ function registrarPedido(){
     if(!nombre||!tel||!ciudad||!dpto){toast('Nombre, teléfono del destinatario, ciudad y departamento son obligatorios');return;}
     if(!empresa){toast('Indica el nombre de la empresa u oficina destino');return;}
   }
-  // El teléfono debe tener exactamente 10 dígitos (celular colombiano).
+  // El teléfono debe ser un celular colombiano válido: 10 dígitos y empezar en 3.
   const telDigitos=tel.replace(/\D/g,'');
   if(telDigitos.length!==10){
     toast('El teléfono/WhatsApp debe tener exactamente 10 dígitos');
+    document.getElementById('ped-tel')?.focus();
+    return;
+  }
+  if(telDigitos[0]!=='3'){
+    toast('El teléfono debe empezar en 3 (celular colombiano). Corrígelo para registrar el pedido.');
     document.getElementById('ped-tel')?.focus();
     return;
   }
@@ -8174,7 +8181,9 @@ function getCatIcon(cat=''){
 }
 function abrirPickerProducto(){
   const catSel=document.getElementById('picker-cat');
-  const soloAccesorios = esVentaGrupo(tipoVenta);
+  // En combo/trío/cuarteto se permiten TODOS los productos (botas, billeteras,
+  // bolsos, etc.) — el picker ya no restringe a accesorios.
+  const soloAccesorios = false;
   let cats=[...new Set(getProds().map(p=>p.categoria||'Sin categoría').filter(Boolean))].sort();
   if(soloAccesorios) cats=cats.filter(c=>esCategoriaComboPermitida(c));
   const catActual=catSel?.value||'';
@@ -8192,7 +8201,9 @@ function renderPickerProductos(){
   const q=(document.getElementById('picker-search')?.value||'').toLowerCase();
   const cat=document.getElementById('picker-cat')?.value||'';
   let prods=getProds();
-  const soloAccesorios = esVentaGrupo(tipoVenta);
+  // En combo/trío/cuarteto se permiten TODOS los productos (botas, billeteras,
+  // bolsos, etc.) — el picker ya no restringe a accesorios.
+  const soloAccesorios = false;
   if(soloAccesorios) prods=prods.filter(p=>esCategoriaComboPermitida(p.categoria));
   if(q) prods=prods.filter(p=>p.nombre.toLowerCase().includes(q)||(p.categoria||'').toLowerCase().includes(q));
   if(cat) prods=prods.filter(p=>(p.categoria||'Sin categoría')===cat);
