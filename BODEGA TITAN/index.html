@@ -6147,7 +6147,10 @@ function renderMisPedidos(){
   pedidos.forEach(ped=>{
     const guia=getGuias().find(g=>g.pedidoId===ped.id);
     const esNovedad=ped.estado==='novedad';
-    html+=`<div class="card mb-16" style="${esNovedad?'border-left:4px solid var(--warning)':''}">
+    const esReponer=!!ped.backorderPendiente;
+    const paresRep=esReponer?(Array.isArray(ped.items)?ped.items.filter(i=>i.backorder).reduce((s,i)=>s+(i.faltante||0),0):0):0;
+    html+=`<div class="card mb-16" style="${esReponer?'border-left:4px solid #dc2626':esNovedad?'border-left:4px solid var(--warning)':''}">
+      ${esReponer?`<div class="novedad-banner" style="background:#fef2f2;border-color:#fca5a5"><span style="font-size:20px"><i class="bi bi-exclamation-octagon-fill" style="color:#dc2626"></i></span><div><strong style="color:#991b1b">Pedido POR REPONER — sin stock físico${paresRep?` (${paresRep} par${paresRep===1?'':'es'})`:''}</strong><div style="font-size:12px;margin-top:2px">${ped.notaEstado||'Bodega entregará las unidades cuando el proveedor reponga, con prioridad por el orden en que se registró el pedido.'}</div></div></div>`:''}
       ${esNovedad?`<div class="novedad-banner"><span style="font-size:20px"><i class="bi bi-exclamation-triangle-fill" style="color:var(--warning)"></i></span><div><strong>Hay una novedad en este pedido</strong><div style="font-size:12px;margin-top:2px">${ped.notaEstado||'Contacta al administrador para resolver la novedad.'}</div></div></div>`:''}
       <div class="flex-between mb-12">
         <div>
@@ -6539,7 +6542,13 @@ function abrirCambioEstado(id){
   pedidoAccionId=id;
   const ped=getPedidos().find(p=>p.id===id);
   if(!ped)return;
-  document.getElementById('nuevo-estado-ped').value=ped.estado;
+  // Opción "Por reponer": SOLO la ve el administrador. Se agrega/quita dinámicamente.
+  const sel=document.getElementById('nuevo-estado-ped');
+  let optPR=sel.querySelector('option[value="por_reponer"]');
+  if(isAdmin()){
+    if(!optPR){ optPR=document.createElement('option'); optPR.value='por_reponer'; optPR.textContent='⚠ Por reponer'; sel.appendChild(optPR); }
+  } else if(optPR){ optPR.remove(); }
+  sel.value = (ped.backorderPendiente && isAdmin()) ? 'por_reponer' : ped.estado;
   document.getElementById('nota-estado-ped').value=ped.notaEstado||'';
   const chk=document.getElementById('devolucion-ingreso-chk');
   if(chk) chk.checked=!!ped.devolucionIngresada;
@@ -6568,7 +6577,37 @@ function confirmarCambioEstado(){
   const nota=document.getElementById('nota-estado-ped').value.trim();
   const devolucionIngresada=nuevoEstado==='en_devolucion' && document.getElementById('devolucion-ingreso-chk')?.checked;
   const estadoAnterior=ped.estado;
+
+  // ── "POR REPONER" (solo admin) ────────────────────────────────────────
+  // No es un estado de envío: marca el pedido como backorder (vendido sin stock
+  // físico) para que resalte, la colaboradora lo vea en sus pedidos y se cubra
+  // por prioridad cuando el proveedor entregue. NO cambia ped.estado ni el stock.
+  if(nuevoEstado==='por_reponer'){
+    if(!isAdmin()){ toast('Solo el administrador puede marcar un pedido como "Por reponer"'); return; }
+    const items=Array.isArray(ped.items)&&ped.items.length?ped.items:[];
+    const upd={...ped,
+      backorderPendiente:true, backorderManual:true, tieneBackorder:true,
+      tsBackorderAdmin:Date.now(),
+      notaEstado: nota||ped.notaEstado||undefined
+    };
+    if(items.length){
+      upd.items=items.map(it=> it.externa ? it : {...it, backorder:true, faltante:(it.faltante||it.cantidad||1)});
+    }
+    writePedido(upd);
+    toast('Pedido marcado como POR REPONER — la colaboradora lo verá en sus pedidos');
+    cerrarModal('modal-estado-pedido');
+    return;
+  }
+
   const pedActualizado={...ped, estado:nuevoEstado, notaEstado:nota||undefined, tsEstado:Date.now()};
+  // Si el pedido estaba marcado "por reponer" A MANO por el admin y ahora se
+  // pasa a un estado real, se limpia la marca de backorder (los backorders
+  // automáticos por venta sin stock se conservan hasta que el proveedor entregue).
+  if(ped.backorderManual && nuevoEstado!=='por_reponer'){
+    pedActualizado.backorderPendiente=false;
+    pedActualizado.backorderManual=false;
+    if(Array.isArray(pedActualizado.items)) pedActualizado.items=pedActualizado.items.map(it=>({...it, backorder:false, faltante:0}));
+  }
   if(nuevoEstado==='en_devolucion') pedActualizado.devolucionIngresada=!!devolucionIngresada;
   let msgExtra='';
 
