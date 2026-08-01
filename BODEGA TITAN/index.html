@@ -5439,6 +5439,17 @@ async function validarDireccion(){
 function aplicarSalidaStockPedido(ped, callback, opts){
   const permitirNeg = !!(opts && opts.permitirNegativo);
   const backorderPorVid={};
+  // Resuelve la variante por id; si el id no coincide (producto re-editado →
+  // id nuevo), cae a buscar por talla+color. Así una venta no se bloquea con
+  // "la variante ya no existe" cuando en realidad sí está, solo cambió de id.
+  const _nrm=s=>String(s==null?'':s).trim().toLowerCase();
+  const findVar=(variantes, it)=>{
+    let v=(variantes||[]).find(x=>x.id===it.vid);
+    if(!v && (it.talla!=null || it.color!=null)){
+      v=(variantes||[]).find(x=>_nrm(x.talla)===_nrm(it.talla) && _nrm(x.color)===_nrm(it.color));
+    }
+    return v;
+  };
   if(escrituraBloqueada()){ callback(false); return; }
   const items=Array.isArray(ped.items)&&ped.items.length?ped.items
     :[{pid:ped.pid||ped.productoId,vid:ped.vid||ped.varianteId,cantidad:ped.cantidadPares||1,productoNombre:ped.productoNombre,talla:ped.talla,color:ped.color}];
@@ -5513,7 +5524,7 @@ function aplicarSalidaStockPedido(ped, callback, opts){
       REF.prods.child(pid).transaction(current=>{
         if(!current) return current; // producto no existe: no tocar, se reportará como error
         for(const it of itemsDelProd){
-          const v=(current.variantes||[]).find(x=>x.id===it.vid);
+          const v=findVar(current.variantes, it); // por id, o por talla+color si el id cambió
           if(!v) return undefined;               // variante inexistente SIEMPRE aborta
           // Solo se aborta por stock insuficiente si NO se permite negativo.
           // Con permitirNeg (venta sin stock) el stock puede quedar en negativo.
@@ -5522,7 +5533,7 @@ function aplicarSalidaStockPedido(ped, callback, opts){
           }
         }
         itemsDelProd.forEach(it=>{
-          const v=current.variantes.find(x=>x.id===it.vid);
+          const v=findVar(current.variantes, it);
           v.stockActual=(v.stockActual||0)-it.cantidad;
         });
         return current;
@@ -5535,14 +5546,18 @@ function aplicarSalidaStockPedido(ped, callback, opts){
           if(prodFinal){
             const i=localProds.findIndex(p=>p.id===pid);
             if(i>=0) localProds[i]=prodFinal; else localProds.push(prodFinal);
-            // Déficit final por variante = unidades vendidas sin respaldo físico.
-            if(permitirNeg){
-              itemsDelProd.forEach(it=>{
-                const vf=(prodFinal.variantes||[]).find(x=>x.id===it.vid);
+            // Normaliza el id de la variante en el pedido al id REAL del servidor
+            // (si venía con un id fantasma), para que el backorder y la reposición
+            // del proveedor casen bien después.
+            itemsDelProd.forEach(it=>{
+              const vf=findVar(prodFinal.variantes, it);
+              if(vf && vf.id!==it.vid) it.vid=vf.id;
+              // Déficit final por variante = unidades vendidas sin respaldo físico.
+              if(permitirNeg){
                 const deficit=vf?Math.max(0,-(vf.stockActual||0)):0;
                 if(deficit>0) backorderPorVid[it.vid]=deficit;
-              });
-            }
+              }
+            });
           }
           comprometidos.push({pid, itemsDelProd}); // por si hay que revertir
           itemsDelProd.forEach(it=>{
@@ -5567,7 +5582,7 @@ function aplicarSalidaStockPedido(ped, callback, opts){
         let stockOk=!!original;
         if(original){
           itemsDelProd.forEach(it=>{
-            const v=original.variantes.find(x=>x.id===it.vid);
+            const v=findVar(original.variantes, it);
             // Variante inexistente siempre falla; stock insuficiente solo falla
             // cuando NO se permite negativo (venta con backorder).
             if(!v) stockOk=false;
@@ -5577,7 +5592,8 @@ function aplicarSalidaStockPedido(ped, callback, opts){
         if(!stockOk){ huboError=true; terminarSiListo(); return; }
         const pCopy=JSON.parse(JSON.stringify(original));
         itemsDelProd.forEach(it=>{
-          const v=pCopy.variantes.find(x=>x.id===it.vid);
+          const v=findVar(pCopy.variantes, it);
+          if(v.id!==it.vid) it.vid=v.id; // normaliza al id real
           v.stockActual=(v.stockActual||0)-it.cantidad;
           if(permitirNeg){
             const deficit=Math.max(0,-(v.stockActual||0));
