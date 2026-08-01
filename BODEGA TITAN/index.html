@@ -3723,6 +3723,15 @@ function confirmarEntregaItemCompra(compraId, idx){
     // los pares que se vendieron sin stock físico de esta misma variante.
     const cubiertos=liberarBackordersPorEntrega(it.pid, it.vid, qty);
     if(cubiertos>0){
+      // Esas unidades se van a los clientes que estaban "por reponer": SALEN del
+      // stock. Como el stock nunca quedó negativo, aquí se descuenta lo cubierto.
+      ajustarStockAtomico(it.pid, it.vid, -cubiertos, function(ok2){
+        if(ok2){
+          writeMovement({id:uid(),tipo:'salida',subtipo:'backorder',fecha:hoy(),productoId:it.pid,varianteId:it.vid,cantidad:cubiertos,referencia:`Reposición backorder — ${c.proveedor}`,notas:'Entrega a pedidos que estaban por reponer',usuario:CU?.nombre||'',ts:Date.now()});
+        } else {
+          console.warn('[BACKORDER] No se pudo descontar el stock cubierto por reposición (revisar):', it.pid, it.vid, cubiertos);
+        }
+      });
       toast(`+${qty} recibidas: ${it.productoNombre} T${it.talla}/${it.color}. Se cubrieron ${cubiertos} par(es) que estaban por reponer.`, 6000);
     } else {
       toast(`+${qty} unidades recibidas: ${it.productoNombre} T${it.talla}/${it.color}`);
@@ -5540,7 +5549,10 @@ function aplicarSalidaStockPedido(ped, callback, opts){
         }
         itemsDelProd.forEach(it=>{
           const v=findVar(current.variantes, it);
-          v.stockActual=(v.stockActual||0)-it.cantidad;
+          const before=v.stockActual||0;
+          const cubierto=Math.max(0, Math.min(it.cantidad, before)); // lo que sí hay en físico
+          it._deficit=it.cantidad-cubierto;   // pares vendidos SIN stock físico (backorder)
+          v.stockActual=before-cubierto;       // topado en 0 — nunca negativo (regla Firebase)
         });
         return current;
       }, (error, committed, snapshot)=>{
@@ -5560,11 +5572,12 @@ function aplicarSalidaStockPedido(ped, callback, opts){
             itemsDelProd.forEach(it=>{
               const vf=findVar(prodFinal.variantes, it);
               if(vf && vf.id!==it.vid) it.vid=vf.id;
-              // Déficit final por variante = unidades vendidas sin respaldo físico.
-              if(permitirNeg){
-                const deficit=vf?Math.max(0,-(vf.stockActual||0)):0;
-                if(deficit>0) backorderPorVid[it.vid]=deficit;
+              // Déficit = pares vendidos sin respaldo físico (calculado en la
+              // transacción con el stock topado en 0). Se acumula por variante.
+              if(permitirNeg && (it._deficit||0)>0){
+                backorderPorVid[it.vid]=(backorderPorVid[it.vid]||0)+it._deficit;
               }
+              delete it._deficit;
             });
           }
           comprometidos.push({pid, itemsDelProd}); // por si hay que revertir
@@ -5602,10 +5615,12 @@ function aplicarSalidaStockPedido(ped, callback, opts){
         itemsDelProd.forEach(it=>{
           const v=findVar(pCopy.variantes, it);
           if(v.id!==it.vid) it.vid=v.id; // normaliza al id real
-          v.stockActual=(v.stockActual||0)-it.cantidad;
+          const before=v.stockActual||0;
+          const cubierto=Math.max(0, Math.min(it.cantidad, before));
+          v.stockActual=before-cubierto; // topado en 0
           if(permitirNeg){
-            const deficit=Math.max(0,-(v.stockActual||0));
-            if(deficit>0) backorderPorVid[it.vid]=deficit;
+            const deficit=it.cantidad-cubierto;
+            if(deficit>0) backorderPorVid[it.vid]=(backorderPorVid[it.vid]||0)+deficit;
           }
         });
         writeProd(pCopy);
