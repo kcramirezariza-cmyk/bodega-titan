@@ -96,6 +96,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .stats-row{display:grid;gap:14px;margin-bottom:18px}
 .stats-4{grid-template-columns:repeat(4,1fr)}
 .stats-5{grid-template-columns:repeat(5,1fr)}
+.stats-6{grid-template-columns:repeat(6,1fr)}
 .stats-2{grid-template-columns:repeat(2,1fr)}
 .stat-card{background:var(--card);border-radius:12px;border:1px solid var(--border);padding:14px}
 .stat-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;margin-bottom:8px}
@@ -288,6 +289,7 @@ textarea{resize:vertical}
   .content{padding:12px}
   .stats-4{grid-template-columns:repeat(2,1fr)!important}
   .stats-5{grid-template-columns:repeat(2,1fr)!important}
+  .stats-6{grid-template-columns:repeat(2,1fr)!important}
   .stats-2{grid-template-columns:1fr!important}
   .grid-2{grid-template-columns:1fr!important}
   .section-header{flex-wrap:wrap}
@@ -416,12 +418,13 @@ textarea{resize:vertical}
 
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
-      <div class="stats-row stats-5 mb-12" id="dash-admin-stats">
+      <div class="stats-row stats-6 mb-12" id="dash-admin-stats">
         <div class="stat-card"><div class="stat-icon" style="background:#ede9fe;color:#6366f1"><i class="bi bi-grid-fill"></i></div><div class="stat-label">Productos</div><div class="stat-value" id="s-prods">0</div><div class="stat-sub">Referencias activas</div></div>
         <div class="stat-card"><div class="stat-icon" style="background:#dbeafe;color:#3b82f6"><i class="bi bi-boot"></i></div><div class="stat-label">Stock Botas</div><div class="stat-value" id="s-stock-botas">0</div><div class="stat-sub">Pares en inventario</div></div>
         <div class="stat-card"><div class="stat-icon" style="background:#fef3c7;color:#d97706"><i class="bi bi-bag-fill"></i></div><div class="stat-label">Stock Accesorios</div><div class="stat-value" id="s-stock-acc">0</div><div class="stat-sub">Bolsos y billeteras</div></div>
         <div class="stat-card clickable" style="position:relative" onclick="verEntradasHoy()"><button class="btn-icon" style="position:absolute;top:10px;right:10px;color:#10b981;background:#dcfce7" onclick="event.stopPropagation();verEntradasHoy()" title="Ver detalle de entradas de hoy"><i class="bi bi-eye-fill"></i></button><div class="stat-icon" style="background:#dcfce7;color:#10b981"><i class="bi bi-arrow-down-circle-fill"></i></div><div class="stat-label">Entradas hoy</div><div class="stat-value text-success" id="s-entradas">0</div><div class="stat-sub">Unidades recibidas · <span style="color:var(--primary)">ver detalle</span></div></div>
         <div class="stat-card clickable" style="position:relative" onclick="verSalidasHoy()"><button class="btn-icon" style="position:absolute;top:10px;right:10px;color:#ef4444;background:#fee2e2" onclick="event.stopPropagation();verSalidasHoy()" title="Ver detalle de salidas de hoy"><i class="bi bi-eye-fill"></i></button><div class="stat-icon" style="background:#fee2e2;color:#ef4444"><i class="bi bi-arrow-up-circle-fill"></i></div><div class="stat-label">Salidas hoy</div><div class="stat-value text-danger" id="s-salidas">0</div><div class="stat-sub">Clic para ver detalle</div></div>
+        <div class="stat-card clickable" style="position:relative;border-left:4px solid #dc2626" onclick="irAPorReponer()" title="Ver todos los pedidos por reponer"><div class="stat-icon" style="background:#fee2e2;color:#dc2626"><i class="bi bi-exclamation-octagon-fill"></i></div><div class="stat-label">Por reponer</div><div class="stat-value" style="color:#dc2626" id="s-por-reponer">0</div><div class="stat-sub">Pares vendidos sin stock · <span style="color:var(--primary)">ver</span></div></div>
       </div>
       <div class="stats-row stats-2 mb-16" id="dash-admin-valores">
         <div class="stat-card" style="border-left:4px solid var(--warning)"><div class="stat-label">Valor Inventario — Costo</div><div class="stat-value text-warning" id="s-val-costo">$0</div><div class="stat-sub">Stock × precio costo</div></div>
@@ -596,6 +599,7 @@ textarea{resize:vertical}
             <option value="">Todos</option>
             <option value="entrada">Entradas</option>
             <option value="salida">Salidas</option>
+            <option value="por_reponer">Por reponer</option>
             <option value="restitucion">Cancelado</option>
             <option value="devolucion">Devoluciones</option>
           </select>
@@ -2643,6 +2647,10 @@ function renderDashboard() {
   const elStockTotal=document.getElementById('s-stock'); if(elStockTotal) elStockTotal.textContent=fmtN(totalStock);
   document.getElementById('s-entradas').textContent=fmtN(einHoy);
   document.getElementById('s-salidas').textContent=fmtN(soutHoy);
+  // Total de pares POR REPONER en TODO el sistema (todas las órdenes en ese estado).
+  const paresPorReponer=getPedidos().filter(p=>p.backorderPendiente)
+    .reduce((s,p)=>s+(Array.isArray(p.items)?p.items.filter(i=>i.backorder).reduce((a,i)=>a+(i.faltante||0),0):0),0);
+  const elPR=document.getElementById('s-por-reponer'); if(elPR) elPR.textContent=fmtN(paresPorReponer);
   document.getElementById('s-val-costo').textContent=fmtM(valCosto);
   document.getElementById('s-val-venta').textContent=fmtM(valVenta);
   const b=document.getElementById('badge-alertas');
@@ -4271,9 +4279,10 @@ function renderHistorial(){
         d2=document.getElementById('h-hasta').value;
   let list=[...movs].reverse();
   if(tf){
-    if(tf==='entrada')      list=list.filter(m=>m.tipo==='entrada' && (!m.subtipo || m.subtipo==='compra'));
-    else if(tf==='salida')  list=list.filter(m=>m.tipo==='salida');
-    else                    list=list.filter(m=>m.subtipo===tf);
+    if(tf==='entrada')          list=list.filter(m=>m.tipo==='entrada' && (!m.subtipo || m.subtipo==='compra'));
+    else if(tf==='salida')      list=list.filter(m=>m.tipo==='salida');
+    else if(tf==='por_reponer') list=list.filter(m=>m.tipo==='por_reponer');
+    else                        list=list.filter(m=>m.subtipo===tf);
   }
   if(pfl)list=list.filter(m=>m.productoId===pfl);
   if(d1)list=list.filter(m=>m.fecha>=d1);
@@ -4282,12 +4291,15 @@ function renderHistorial(){
   if(!list.length){wrap.innerHTML='<div class="empty"><div class="empty-icon"><i class="bi bi-clock-history" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin movimientos</h3></div>';return;}
   let html=`<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Variante</th><th>Cantidad</th><th>Referencia</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>`;
   list.forEach(m=>{const p=prods.find(x=>x.id===m.productoId),v=p?.variantes.find(x=>x.id===m.varianteId);
-    const tipoBadge=m.tipo==='entrada'
+    const tipoBadge=m.tipo==='por_reponer'
+      ?'<span class="badge" style="background:#dc2626;color:#fff;font-weight:700"><i class="bi bi-exclamation-octagon-fill"></i> Por reponer</span>'
+      :m.tipo==='entrada'
       ?(m.subtipo==='restitucion'?'<span class="badge badge-warning"><i class="bi bi-x-circle-fill"></i> Cancelado</span>'
         :m.subtipo==='devolucion'?'<span class="badge badge-info">↩ Devolución</span>'
         :'<span class="badge badge-success">⬇ Compra</span>')
       :'<span class="badge badge-danger">⬆ Salida</span>';
-    html+=`<tr><td style="white-space:nowrap">${fmtDT(m.fecha,m.ts)}</td><td>${tipoBadge}</td><td>${p?.nombre||'<span class="text-muted">Eliminado</span>'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${m.tipo==='entrada'?'+':'-'}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.notas||'—'}</td></tr>`;
+    const signo=m.tipo==='entrada'?'+':m.tipo==='por_reponer'?'':'-';
+    html+=`<tr><td style="white-space:nowrap">${fmtDT(m.fecha,m.ts)}</td><td>${tipoBadge}</td><td>${p?.nombre||'<span class="text-muted">Eliminado</span>'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${signo}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.notas||'—'}</td></tr>`;
   });
   wrap.innerHTML=html+'</tbody></table>';
 }
@@ -5460,6 +5472,20 @@ async function validarDireccion(){
 // stock físico / backorder). Solo lo usa el registro de pedidos de colaborador.
 // El callback recibe (ok, info) donde info.backorderPorVid[vid] = déficit final
 // (unidades que quedaron vendidas sin respaldo físico) de esa variante.
+// Construye los movimientos de una venta para el historial. La parte con stock
+// físico va como 'salida' (descuenta stock); la parte sin físico (backorder) va
+// como 'por_reponer' — un tipo aparte que NO cuenta como salida en el stock,
+// solo deja el rastro para que el historial la muestre como "Por reponer".
+function _movsVentaPedido(it, ped){
+  const cub = it._cubierto!=null ? it._cubierto : it.cantidad;
+  const def = it._deficit || 0;
+  const cliente = 'Cliente: '+((ped.cliente&&ped.cliente.nombre)||'');
+  const base = { fecha:hoy(), productoId:it.pid, varianteId:it.vid, referencia:'Pedido #'+ped.id.slice(-6), usuario:CU?.nombre||'', pedidoId:ped.id, ts:Date.now() };
+  const arr=[];
+  if(cub>0) arr.push({ id:uid(), tipo:'salida', cantidad:cub, notas:cliente, ...base });
+  if(def>0) arr.push({ id:uid(), tipo:'por_reponer', cantidad:def, notas:'Vendido SIN stock físico (por reponer). '+cliente, ...base });
+  return arr;
+}
 function aplicarSalidaStockPedido(ped, callback, opts){
   const permitirNeg = !!(opts && opts.permitirNegativo);
   const backorderPorVid={};
@@ -5519,7 +5545,8 @@ function aplicarSalidaStockPedido(ped, callback, opts){
           if(!cur) return cur;
           c.itemsDelProd.forEach(it=>{
             const v=findVar(cur.variantes, it);
-            if(v) v.stockActual=(v.stockActual||0)+it.cantidad;
+            // Solo se re-suma lo que REALMENTE se descontó (el backorder no descontó).
+            if(v) v.stockActual=(v.stockActual||0)+(it._cubierto!=null?it._cubierto:it.cantidad);
           });
           return cur;
         }, (err,com,snap)=>{
@@ -5539,7 +5566,7 @@ function aplicarSalidaStockPedido(ped, callback, opts){
         const pc=JSON.parse(JSON.stringify(p));
         c.itemsDelProd.forEach(it=>{
           const v=findVar(pc.variantes, it);
-          if(v) v.stockActual=(v.stockActual||0)+it.cantidad;
+          if(v) v.stockActual=(v.stockActual||0)+(it._cubierto!=null?it._cubierto:it.cantidad);
         });
         writeProd(pc);
       });
@@ -5566,7 +5593,8 @@ function aplicarSalidaStockPedido(ped, callback, opts){
           const v=findVar(current.variantes, it);
           const before=v.stockActual||0;
           const cubierto=Math.max(0, Math.min(it.cantidad, before)); // lo que sí hay en físico
-          it._deficit=it.cantidad-cubierto;   // pares vendidos SIN stock físico (backorder)
+          it._cubierto=cubierto;               // pares con stock físico (salida real)
+          it._deficit=it.cantidad-cubierto;    // pares vendidos SIN stock físico (backorder)
           v.stockActual=before-cubierto;       // topado en 0 — nunca negativo (regla Firebase)
         });
         return current;
@@ -5592,20 +5620,11 @@ function aplicarSalidaStockPedido(ped, callback, opts){
               if(permitirNeg && (it._deficit||0)>0){
                 backorderPorVid[it.vid]=(backorderPorVid[it.vid]||0)+it._deficit;
               }
-              delete it._deficit;
             });
           }
           comprometidos.push({pid, itemsDelProd}); // por si hay que revertir
           itemsDelProd.forEach(it=>{
-            movimientosAEscribir.push({
-              id:uid(), tipo:'salida', fecha:hoy(),
-              productoId:it.pid, varianteId:it.vid, cantidad:it.cantidad,
-              referencia:'Pedido #'+ped.id.slice(-6),
-              notas:'Cliente: '+((ped.cliente&&ped.cliente.nombre)||''),
-              usuario:CU?.nombre||'',
-              pedidoId:ped.id,
-              ts:Date.now()
-            });
+            _movsVentaPedido(it, ped).forEach(m=>movimientosAEscribir.push(m));
           });
         }
         terminarSiListo();
@@ -5632,24 +5651,15 @@ function aplicarSalidaStockPedido(ped, callback, opts){
           if(v.id!==it.vid) it.vid=v.id; // normaliza al id real
           const before=v.stockActual||0;
           const cubierto=Math.max(0, Math.min(it.cantidad, before));
+          it._cubierto=cubierto;
+          it._deficit=it.cantidad-cubierto;
           v.stockActual=before-cubierto; // topado en 0
-          if(permitirNeg){
-            const deficit=it.cantidad-cubierto;
-            if(deficit>0) backorderPorVid[it.vid]=(backorderPorVid[it.vid]||0)+deficit;
-          }
+          if(permitirNeg && it._deficit>0) backorderPorVid[it.vid]=(backorderPorVid[it.vid]||0)+it._deficit;
         });
         writeProd(pCopy);
         comprometidos.push({pid, itemsDelProd}); // por si hay que revertir
         itemsDelProd.forEach(it=>{
-          movimientosAEscribir.push({
-            id:uid(), tipo:'salida', fecha:hoy(),
-            productoId:it.pid, varianteId:it.vid, cantidad:it.cantidad,
-            referencia:'Pedido #'+ped.id.slice(-6),
-            notas:'Cliente: '+((ped.cliente&&ped.cliente.nombre)||''),
-            usuario:CU?.nombre||'',
-            pedidoId:ped.id,
-            ts:Date.now()
-          });
+          _movsVentaPedido(it, ped).forEach(m=>movimientosAEscribir.push(m));
         });
       }catch(err){ console.error('aplicarSalidaStockPedido (local) falló:',err); huboError=true; }
       terminarSiListo();
@@ -5663,22 +5673,25 @@ function aplicarSalidaStockPedido(ped, callback, opts){
 // el pedido nunca hubiera existido. Distinto de aplicarEntradaStockPedido, que
 // sí registra una devolución/restitución cuando un pedido REAL se cancela.
 function revertirSalidaStockPedido(ped, cb){
-  const items=(Array.isArray(ped.items)&&ped.items.length?ped.items:[]).filter(i=>!i.externa);
-  // 1) Borrar los movimientos de salida de este pedido (local y servidor).
-  const salidasDelPedido=localMovs.filter(m=>m.pedidoId===ped.id && m.tipo==='salida');
-  salidasDelPedido.forEach(m=>{ if(USE_FIREBASE && REF.movs) REF.movs.child(m.id).remove().catch(()=>{}); });
-  localMovs=localMovs.filter(m=>!(m.pedidoId===ped.id && m.tipo==='salida'));
-  // 2) Re-sumar el stock por producto (transacción, nunca .set() completo).
-  const porPid={};
-  items.forEach(it=>{ (porPid[it.pid]=porPid[it.pid]||[]).push(it); });
-  const pids=Object.keys(porPid);
+  // Cuánto se descontó REALMENTE por (pid,vid) = suma de los movimientos 'salida'
+  // de este pedido. El backorder ('por_reponer') NO tocó el stock, así que no se
+  // re-suma. Reconstruir desde los movimientos evita depender de campos temporales.
+  const movsPed=localMovs.filter(m=>m.pedidoId===ped.id && m.tipo==='salida');
+  const reponer={}; // pid -> { vid -> cantidad }
+  movsPed.forEach(m=>{ (reponer[m.productoId]=reponer[m.productoId]||{}); reponer[m.productoId][m.varianteId]=(reponer[m.productoId][m.varianteId]||0)+(m.cantidad||0); });
+  // 1) Borrar los movimientos de salida Y de por_reponer de este pedido.
+  const aBorrar=localMovs.filter(m=>m.pedidoId===ped.id && (m.tipo==='salida'||m.tipo==='por_reponer'));
+  aBorrar.forEach(m=>{ if(USE_FIREBASE && REF.movs) REF.movs.child(m.id).remove().catch(()=>{}); });
+  localMovs=localMovs.filter(m=>!(m.pedidoId===ped.id && (m.tipo==='salida'||m.tipo==='por_reponer')));
+  // 2) Re-sumar SOLO lo realmente descontado.
+  const pids=Object.keys(reponer);
   if(!pids.length){ if(cb) cb(); return; }
   if(!USE_FIREBASE){
     pids.forEach(pid=>{
       const p=getProds().find(x=>x.id===pid);
       if(!p) return;
       const pc=JSON.parse(JSON.stringify(p));
-      porPid[pid].forEach(it=>{ const v=pc.variantes.find(x=>x.id===it.vid); if(v) v.stockActual=(v.stockActual||0)+it.cantidad; });
+      Object.entries(reponer[pid]).forEach(([vid,cant])=>{ const v=(pc.variantes||[]).find(x=>x&&x.id===vid); if(v) v.stockActual=(v.stockActual||0)+cant; });
       writeProd(pc);
     });
     if(cb) cb(); return;
@@ -5687,7 +5700,7 @@ function revertirSalidaStockPedido(ped, cb){
   pids.forEach(pid=>{
     REF.prods.child(pid).transaction(cur=>{
       if(!cur) return cur;
-      porPid[pid].forEach(it=>{ const v=(cur.variantes||[]).find(x=>x.id===it.vid); if(v) v.stockActual=(v.stockActual||0)+it.cantidad; });
+      Object.entries(reponer[pid]).forEach(([vid,cant])=>{ const v=(cur.variantes||[]).find(x=>x&&x.id===vid); if(v) v.stockActual=(v.stockActual||0)+cant; });
       return cur;
     }, (err,com,snap)=>{
       if(!err && com && snap){
@@ -6015,6 +6028,8 @@ function registrarPedido(){
         ped.backorderPendiente=true;
         registrarAlertaStock('Venta sin stock físico (backorder)', ped.items.filter(i=>i.backorder).map(i=>`${i.productoNombre} T${i.talla}/${i.color} x${i.faltante}`).join(' · '));
       }
+      // Limpiar campos temporales para no guardarlos en el pedido.
+      ped.items.forEach(it=>{ delete it._cubierto; delete it._deficit; });
       finalizarRegistroPedido();
     }, {permitirNegativo:true});
   } else {
@@ -6453,6 +6468,12 @@ function limpiarFiltroFechaRango(){
 let _soloBackorder=false;
 function toggleFiltroBackorder(){
   _soloBackorder=!_soloBackorder;
+  renderAdminPedidos();
+}
+// Desde el Dashboard: abre "Todos los Pedidos" mostrando solo los "por reponer".
+function irAPorReponer(){
+  navigate('admin-pedidos');
+  _soloBackorder=true;
   renderAdminPedidos();
 }
 function renderAdminPedidos(){
