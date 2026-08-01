@@ -5439,18 +5439,24 @@ async function validarDireccion(){
 function aplicarSalidaStockPedido(ped, callback, opts){
   const permitirNeg = !!(opts && opts.permitirNegativo);
   const backorderPorVid={};
+  let motivoFallo='';
+  // Firebase puede guardar `variantes` como ARRAY o como OBJETO {0:.., 2:..}
+  // (pasa cuando se borró una talla al re-editar). asArr lo normaliza para que
+  // .find/.forEach nunca fallen.
+  const asArr=vs=>Array.isArray(vs)?vs:(vs&&typeof vs==='object'?Object.values(vs):[]);
   // Resuelve la variante por id; si el id no coincide (producto re-editado →
   // id nuevo), cae a buscar por talla+color. Así una venta no se bloquea con
   // "la variante ya no existe" cuando en realidad sí está, solo cambió de id.
   const _nrm=s=>String(s==null?'':s).trim().toLowerCase();
   const findVar=(variantes, it)=>{
-    let v=(variantes||[]).find(x=>x.id===it.vid);
+    const arr=asArr(variantes);
+    let v=arr.find(x=>x && x.id===it.vid);
     if(!v && (it.talla!=null || it.color!=null)){
-      v=(variantes||[]).find(x=>_nrm(x.talla)===_nrm(it.talla) && _nrm(x.color)===_nrm(it.color));
+      v=arr.find(x=>x && _nrm(x.talla)===_nrm(it.talla) && _nrm(x.color)===_nrm(it.color));
     }
     return v;
   };
-  if(escrituraBloqueada()){ callback(false); return; }
+  if(escrituraBloqueada()){ callback(false,{motivo:'La app está bloqueada por una versión nueva. Recarga la página.'}); return; }
   const items=Array.isArray(ped.items)&&ped.items.length?ped.items
     :[{pid:ped.pid||ped.productoId,vid:ped.vid||ped.varianteId,cantidad:ped.cantidadPares||1,productoNombre:ped.productoNombre,talla:ped.talla,color:ped.color}];
   const itemsPorPid={};
@@ -5481,14 +5487,14 @@ function aplicarSalidaStockPedido(ped, callback, opts){
     // de los otros productos. Antes esto quedaba descontado sin pedido ni
     // movimiento → drenaba el stock poco a poco. NO se escriben movimientos:
     // es la reversión de una venta que nunca ocurrió.
-    if(!comprometidos.length){ callback(false); return; }
+    if(!comprometidos.length){ callback(false,{motivo:motivoFallo}); return; }
     if(USE_FIREBASE){
       let porRevertir=comprometidos.length;
       comprometidos.forEach(c=>{
         REF.prods.child(c.pid).transaction(cur=>{
           if(!cur) return cur;
           c.itemsDelProd.forEach(it=>{
-            const v=(cur.variantes||[]).find(x=>x.id===it.vid);
+            const v=findVar(cur.variantes, it);
             if(v) v.stockActual=(v.stockActual||0)+it.cantidad;
           });
           return cur;
@@ -5499,7 +5505,7 @@ function aplicarSalidaStockPedido(ped, callback, opts){
           } else {
             console.error('[STOCK] No se pudo revertir el descuento de', c.pid, '— revisar manualmente:', err);
           }
-          if(--porRevertir===0) callback(false);
+          if(--porRevertir===0) callback(false,{motivo:motivoFallo});
         });
       });
     } else {
@@ -5508,12 +5514,12 @@ function aplicarSalidaStockPedido(ped, callback, opts){
         if(!p) return;
         const pc=JSON.parse(JSON.stringify(p));
         c.itemsDelProd.forEach(it=>{
-          const v=pc.variantes.find(x=>x.id===it.vid);
+          const v=findVar(pc.variantes, it);
           if(v) v.stockActual=(v.stockActual||0)+it.cantidad;
         });
         writeProd(pc);
       });
-      callback(false);
+      callback(false,{motivo:motivoFallo});
     }
   }
 
@@ -5522,14 +5528,14 @@ function aplicarSalidaStockPedido(ped, callback, opts){
 
     if(USE_FIREBASE){
       REF.prods.child(pid).transaction(current=>{
-        if(!current) return current; // producto no existe: no tocar, se reportará como error
+        if(!current){ motivoFallo='El producto no se pudo leer del servidor. Reintenta.'; return current; }
         for(const it of itemsDelProd){
           const v=findVar(current.variantes, it); // por id, o por talla+color si el id cambió
-          if(!v) return undefined;               // variante inexistente SIEMPRE aborta
+          if(!v){ motivoFallo=`La talla ${it.talla||'?'}/${it.color||'?'} de "${it.productoNombre||''}" no existe en el catálogo del servidor. Usa "Auditar stock" en Productos.`; return undefined; }
           // Solo se aborta por stock insuficiente si NO se permite negativo.
           // Con permitirNeg (venta sin stock) el stock puede quedar en negativo.
           if(!permitirNeg && (v.stockActual||0) < it.cantidad){
-            return undefined; // ABORTA la transacción: stock insuficiente
+            motivoFallo=`Stock insuficiente de ${it.talla||'?'}/${it.color||'?'}.`; return undefined;
           }
         }
         itemsDelProd.forEach(it=>{
@@ -5540,7 +5546,9 @@ function aplicarSalidaStockPedido(ped, callback, opts){
       }, (error, committed, snapshot)=>{
         if(error || !committed){
           huboError=true;
-          console.error('[STOCK] Transacción abortada/fallida para producto', pid, '— stock insuficiente o error:', error);
+          if(error) motivoFallo='Error de Firebase: '+(error.message||error);
+          else if(!motivoFallo) motivoFallo='La transacción no se confirmó (posible conflicto). Reintenta.';
+          console.error('[STOCK] Transacción abortada/fallida para producto', pid, '— motivo:', motivoFallo, error);
         } else {
           const prodFinal=snapshot ? snapshot.val() : null;
           if(prodFinal){
@@ -5948,9 +5956,10 @@ function registrarPedido(){
     aplicarSalidaStockPedido(ped, function(ok, info){
       if(!ok){
         liberarOperacion('registrarPedido','btn-registrar-pedido');
-        toast('⚠️ No se pudo registrar: una de las variantes ya no existe en el catálogo. El pedido NO se creó. Actualiza el inventario e intenta de nuevo.');
-        console.error('[PEDIDO RECHAZADO - TRANSACCIÓN DE STOCK ABORTADA]',{items,timestamp:new Date().toISOString(),usuario:CU?.nombre});
-        registrarAlertaStock('Transacción de stock abortada (variante inexistente)', items.filter(i=>!i.externa).map(i=>`${i.productoNombre} T${i.talla}/${i.color} x${i.cantidad}`).join(' · '));
+        const motivo=(info&&info.motivo)?info.motivo:'no se pudo descontar el stock.';
+        toast('⚠️ No se pudo registrar. El pedido NO se creó.\n\nMotivo: '+motivo, 8000);
+        console.error('[PEDIDO RECHAZADO - TRANSACCIÓN DE STOCK ABORTADA]',{motivo,items,timestamp:new Date().toISOString(),usuario:CU?.nombre});
+        registrarAlertaStock('Transacción de stock abortada', motivo+' · '+items.filter(i=>!i.externa).map(i=>`${i.productoNombre} T${i.talla}/${i.color} x${i.cantidad}`).join(' · '));
         return;
       }
       ped.stockDescontado=true;
