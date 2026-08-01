@@ -6553,7 +6553,7 @@ function renderAdminPedidos(){
       <td style="font-size:12px;white-space:nowrap">${ped.precioVenta?fmtM(ped.precioVenta):'—'}${precioBadge}</td>
       <td style="font-size:12px;color:var(--muted)">${ped.vendedorNombre||'—'}</td>
       <td style="font-size:12px">${guia?`<span style="font-family:monospace">${guia.numero}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
-      <td><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">${estadoBadge(estadoEfectivo(ped))}</div></td>
+      <td><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">${estadoBadgeVisual(ped)}</div></td>
       <td><div style="display:flex;gap:4px">
         ${ped.estado==='pendiente'?`<button class="btn-icon" title="Aprobar pedido" style="color:var(--success)" onclick="aprobarPedido('${ped.id}')"><i class="bi bi-check-circle-fill"></i></button>`:''}
         <button class="btn-icon" title="Ver detalle" onclick="verDetallePedido('${ped.id}')"><i class="bi bi-eye-fill"></i></button>
