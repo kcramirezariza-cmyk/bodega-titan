@@ -5776,8 +5776,23 @@ function registrarPedido(){
   const dir=document.getElementById('ped-dir').value.trim();
   const barrio=document.getElementById('ped-barrio').value.trim();
   const referencia=document.getElementById('ped-referencia').value.trim();
-  const ciudad=document.getElementById('ped-ciudad').value.trim();
   const dpto=document.getElementById('ped-dpto-col').value.trim();
+  // Ciudad: normalmente viene del input oculto (se llena al elegir de la lista).
+  // RESPALDO: si el colaborador escribió el nombre y NO lo seleccionó, resolvemos
+  // la ciudad desde el texto del buscador contra la lista oficial (canónico), así
+  // no se bloquea un pedido con la ciudad bien escrita. Solo se acepta si coincide
+  // con una ciudad real de la lista (para que el chequeo de ciudad bloqueada siga
+  // funcionando con el nombre canónico).
+  let ciudad=document.getElementById('ped-ciudad').value.trim();
+  if(!ciudad){
+    const txt=(document.getElementById('ped-ciudad-search')?.value||'').trim();
+    if(txt && typeof CO_DEPTS!=='undefined'){
+      const sinT=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+      const lista=(dpto && CO_DEPTS[dpto]) ? CO_DEPTS[dpto] : Object.values(CO_DEPTS).flat();
+      const match=lista.find(c=>sinT(c)===sinT(txt));
+      if(match){ ciudad=match; const h=document.getElementById('ped-ciudad'); if(h) h.value=match; }
+    }
+  }
   const notas=document.getElementById('ped-notas').value.trim();
   const formaPago=document.getElementById('ped-forma-pago').value;
   const destinoTipo=document.querySelector('input[name="ped-destino-tipo"]:checked')?.value||'domicilio';
@@ -8361,6 +8376,13 @@ function filtrarCiudades(){
   let ciudades=[];
   if(dpto && CO_DEPTS[dpto]) ciudades=CO_DEPTS[dpto];
   else ciudades=Object.values(CO_DEPTS).flat();
+  // Auto-confirmar: si lo escrito coincide EXACTO con una ciudad válida (y no está
+  // bloqueada), se fija el oculto sin necesidad de hacer clic en la lista. Así el
+  // colaborador puede escribir la ciudad completa y registrar sin quedar atascado.
+  if(q && hidden && !hidden.value){
+    const exacta=ciudades.find(c=>sinTildes(c)===q);
+    if(exacta && !_ciudadesBloqueadas[exacta+'_'+(dpto||'')]){ hidden.value=exacta; actualizarLocalidadBogota(); }
+  }
   if(q) ciudades=ciudades.filter(c=>sinTildes(c).includes(q));
   ciudades=ciudades.slice(0,40);
   if(!ciudades.length){ dd.style.display='none'; return; }
