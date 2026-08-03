@@ -5723,6 +5723,10 @@ function aplicarEntradaStockPedido(ped, motivo){
     // Devoluciones (manual o por guía devuelta) → 'devolucion' (cuentan como ingreso).
     // Cancelaciones y eliminaciones → 'restitucion' (no cuentan como ingreso).
     const subtipo = /^Devolucion/.test(motivo||'') ? 'devolucion' : 'restitucion';
+    // Solo se devuelve al inventario lo que REALMENTE se descontó. En un
+    // backorder (venta sin stock físico) la parte "faltante" nunca salió del
+    // stock, así que no se restituye (evita inflar el inventario al cancelar).
+    const restit = it => Math.max(0, (it.cantidad||0) - (it.backorder ? (it.faltante||0) : 0));
     const items=Array.isArray(ped.items)&&ped.items.length?ped.items
       :[{pid:ped.pid||ped.productoId,vid:ped.vid||ped.varianteId,cantidad:ped.cantidadPares||1}];
     const itemsPorPid={};
@@ -5736,7 +5740,7 @@ function aplicarEntradaStockPedido(ped, motivo){
           if(!current) return current;
           itemsPorPid[pid].forEach(it=>{
             const v=(current.variantes||[]).find(x=>x.id===it.vid);
-            if(v) v.stockActual=(v.stockActual||0)+it.cantidad;
+            if(v && restit(it)>0) v.stockActual=(v.stockActual||0)+restit(it);
           });
           return current;
         }, (error, committed, snapshot)=>{
@@ -5753,15 +5757,16 @@ function aplicarEntradaStockPedido(ped, motivo){
           const pCopy=JSON.parse(JSON.stringify(original));
           itemsPorPid[pid].forEach(it=>{
             const v=pCopy.variantes.find(x=>x.id===it.vid);
-            if(v) v.stockActual=(v.stockActual||0)+it.cantidad;
+            if(v && restit(it)>0) v.stockActual=(v.stockActual||0)+restit(it);
           });
           writeProd(pCopy);
         }
       }
       itemsPorPid[pid].forEach(it=>{
+        if(restit(it)<=0) return; // backorder puro: no salió stock → no hay qué restituir
         writeMovement({
           id:uid(), tipo:'entrada', subtipo, fecha:hoy(),
-          productoId:it.pid, varianteId:it.vid, cantidad:it.cantidad,
+          productoId:it.pid, varianteId:it.vid, cantidad:restit(it),
           referencia:(motivo||'Restitucion')+' Pedido #'+ped.id.slice(-6),
           notas:(motivo||'Restitucion')+' — devuelto al stock',
           usuario:CU?.nombre||'',
@@ -6191,10 +6196,14 @@ function estadoBadge(estado){
 // Cuando el proveedor repone y se limpia backorderPendiente, vuelve solo al
 // estado normal (pendiente), indicando que ya hay unidades para ese pedido.
 function estadoBadgeVisual(ped){
-  if(ped && ped.backorderPendiente){
+  // "Por reponer" solo mientras el pedido sigue en su estado de espera
+  // (pendiente). Si el admin lo movió a otro estado (cancelado, entregado, etc.),
+  // manda ese estado — así no se queda pegado en "Por reponer".
+  const ef=estadoEfectivo(ped);
+  if(ped && ped.backorderPendiente && (ef==='pendiente'||ef==='aprobado')){
     return '<span class="badge" style="background:#dc2626;color:#fff;font-weight:700"><i class="bi bi-exclamation-octagon-fill"></i> Por reponer</span>';
   }
-  return estadoBadge(estadoEfectivo(ped));
+  return estadoBadge(ef);
 }
 
 const _MESES_NOMBRE=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -6714,10 +6723,11 @@ function confirmarCambioEstado(){
   }
 
   const pedActualizado={...ped, estado:nuevoEstado, notaEstado:nota||undefined, tsEstado:Date.now()};
-  // Si el pedido estaba marcado "por reponer" A MANO por el admin y ahora se
-  // pasa a un estado real, se limpia la marca de backorder (los backorders
-  // automáticos por venta sin stock se conservan hasta que el proveedor entregue).
-  if(ped.backorderManual && nuevoEstado!=='por_reponer'){
+  // Si el pedido estaba "por reponer" y el admin lo pasa a CUALQUIER otro estado
+  // (cancelado, entregado, etc.), se limpia la marca de backorder: el nuevo
+  // estado manda y el pedido deja de figurar "por reponer" en todas las vistas.
+  // (Aplica a backorders manuales y automáticos por igual.)
+  if(ped.backorderPendiente && nuevoEstado!=='por_reponer'){
     pedActualizado.backorderPendiente=false;
     pedActualizado.backorderManual=false;
     if(Array.isArray(pedActualizado.items)) pedActualizado.items=pedActualizado.items.map(it=>({...it, backorder:false, faltante:0}));
