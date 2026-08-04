@@ -6654,7 +6654,9 @@ function verDetallePedido(id){
   if(ped.notaEstado) html+=`<div class="novedad-banner"><span><i class="bi bi-chat-left-text-fill" style="color:var(--warning)"></i></span><div><strong>Nota:</strong> ${ped.notaEstado}</div></div>`;
   document.getElementById('mpd-content').innerHTML=html;
   const footer=document.getElementById('mpd-footer');
+  const telWa=(ped.cliente&&ped.cliente.telefono||'').replace(/\D/g,'').replace(/^0/,'');
   footer.innerHTML=`<button class="btn btn-outline" onclick="cerrarModal('modal-pedido-detalle')">Cerrar</button>
+    ${telWa?`<a href="https://wa.me/57${telWa}" target="_blank" rel="noopener" class="btn" style="background:#25d366;color:#fff;border:none;display:inline-flex;align-items:center;gap:6px;text-decoration:none"><i class="bi bi-whatsapp"></i> WhatsApp</a>`:''}
     <button class="btn btn-primary" onclick="abrirCambioEstado('${id}');cerrarModal('modal-pedido-detalle')"><i class="bi bi-pencil-fill"></i> Cambiar estado</button>
     <button class="btn btn-outline" style="border-color:#6366f1;color:#6366f1" onclick="rastreoLibre('${id}');cerrarModal('modal-pedido-detalle')" title="Copia el número (si existe) y abre el rastreo de Interrapidísimo"><i class="bi bi-truck-front-fill"></i> RASTREO</button>
     ${!guia?`<button class="btn btn-success" onclick="abrirModalGuiaParaPedido('${id}');cerrarModal('modal-pedido-detalle')"><i class="bi bi-truck"></i> Asignar guía</button>`:''}`;
