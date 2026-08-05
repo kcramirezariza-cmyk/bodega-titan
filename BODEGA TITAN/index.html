@@ -4198,7 +4198,23 @@ function regEntrada(){
     liberarOperacion('regEntrada','btn-reg-entrada');
     if(!ok){ toast('No se pudo registrar la entrada: '+(err||'error desconocido')); return; }
     writeMovement({id:uid(),tipo:'entrada',subtipo,fecha:hoy(),productoId:pid,varianteId:vid,cantidad:qty,referencia:ref,notas:notes,usuario:CU?.nombre||'',ts:Date.now()});
-    toast(`${subtipo==='devolucion'?'Devolución':'Compra'}: +${qty} unidades`);
+    // ── Liberación de BACKORDERS por prioridad (pedido más antiguo primero) ──
+    // Un ingreso manual de stock también cubre los pares "por reponer" de esa
+    // talla/color, igual que una entrega de proveedor. Las unidades cubiertas se
+    // asignan al colaborador con el pedido más antiguo y salen del stock.
+    const cubiertos=liberarBackordersPorEntrega(pid, vid, qty);
+    if(cubiertos>0){
+      ajustarStockAtomico(pid, vid, -cubiertos, function(ok2){
+        if(ok2){
+          writeMovement({id:uid(),tipo:'salida',subtipo:'backorder',fecha:hoy(),productoId:pid,varianteId:vid,cantidad:cubiertos,referencia:'Reposición backorder (ingreso manual)',notas:'Entrega a pedidos que estaban por reponer',usuario:CU?.nombre||'',ts:Date.now()});
+        } else {
+          console.warn('[BACKORDER] No se pudo descontar el stock cubierto por ingreso manual:', pid, vid, cubiertos);
+        }
+      });
+      toast(`+${qty} unidades. Se cubrieron ${cubiertos} par(es) que estaban por reponer (asignados al pedido más antiguo).`, 6000);
+    } else {
+      toast(`${subtipo==='devolucion'?'Devolución':'Compra'}: +${qty} unidades`);
+    }
     ['in-prod','in-ref','in-notes'].forEach(x=>document.getElementById(x).value='');
     document.getElementById('in-qty').value='1';
     if(document.getElementById('in-subtipo')) document.getElementById('in-subtipo').value='compra';
