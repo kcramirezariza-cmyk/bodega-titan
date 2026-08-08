@@ -6294,7 +6294,22 @@ function estadoBadgeVisual(ped){
   if(ped && ped.backorderPendiente && (ef==='pendiente'||ef==='aprobado')){
     return '<span class="badge" style="background:#dc2626;color:#fff;font-weight:700"><i class="bi bi-exclamation-octagon-fill"></i> Por reponer</span>';
   }
+  // Devolución YA revisada por el admin → letrero en VERDE (solo visual, no cambia
+  // la lógica de la devolución). Se marca/desmarca con el chulito en la tabla.
+  if(ef==='en_devolucion' && ped && ped.devolucionRevisada){
+    return '<span class="badge" style="background:#16a34a;color:#fff;font-weight:700"><i class="bi bi-check-circle-fill"></i> Devolución revisada</span>';
+  }
   return estadoBadge(ef);
+}
+// Marca/desmarca (solo admin) una devolución como REVISADA. Es visual: no toca
+// el stock ni el flujo de la devolución, solo deja constancia de la revisión.
+function toggleDevolucionRevisada(id){
+  if(!isAdmin()){ toast('Solo el administrador puede marcar revisiones'); return; }
+  const ped=getPedidos().find(p=>p.id===id);
+  if(!ped) return;
+  const revisada=!ped.devolucionRevisada;
+  writePedido({...ped, devolucionRevisada:revisada, tsRevisionDevolucion:revisada?Date.now():undefined, revisadaPor:revisada?(CU?.nombre||''):undefined});
+  toast(revisada?'✅ Devolución marcada como revisada':'Marca de revisión quitada');
 }
 
 const _MESES_NOMBRE=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -6674,7 +6689,7 @@ function renderAdminPedidos(){
       <td style="font-size:12px;white-space:nowrap">${ped.precioVenta?fmtM(ped.precioVenta):'—'}${precioBadge}</td>
       <td style="font-size:12px;color:var(--muted)">${ped.vendedorNombre||'—'}</td>
       <td style="font-size:12px">${guia?`<span style="font-family:monospace">${guia.numero}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
-      <td><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">${estadoBadgeVisual(ped)}</div></td>
+      <td><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">${estadoBadgeVisual(ped)}${estadoEfectivo(ped)==='en_devolucion'?`<button class="btn-icon" title="${ped.devolucionRevisada?'Revisada — clic para desmarcar':'Marcar devolución como revisada (solo visual)'}" onclick="event.stopPropagation();toggleDevolucionRevisada('${ped.id}')" style="padding:2px 6px;font-size:11px;border:1px solid ${ped.devolucionRevisada?'#16a34a':'#cbd5e1'};border-radius:6px;background:${ped.devolucionRevisada?'#16a34a':'#fff'};color:${ped.devolucionRevisada?'#fff':'#64748b'};cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:4px"><i class="bi bi-check-lg"></i> ${ped.devolucionRevisada?'Revisada':'Revisar'}</button>`:''}</div></td>
       <td><div style="display:flex;gap:4px">
         ${ped.estado==='pendiente'?`<button class="btn-icon" title="Aprobar pedido" style="color:var(--success)" onclick="aprobarPedido('${ped.id}')"><i class="bi bi-check-circle-fill"></i></button>`:''}
         <button class="btn-icon" title="Ver detalle" onclick="verDetallePedido('${ped.id}')"><i class="bi bi-eye-fill"></i></button>
