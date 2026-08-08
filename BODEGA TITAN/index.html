@@ -606,6 +606,7 @@ textarea{resize:vertical}
           <select id="h-prod" onchange="renderHistorial()" style="width:auto"><option value="">Todos los productos</option></select>
           <input type="date" id="h-desde" onchange="renderHistorial()" title="Desde">
           <input type="date" id="h-hasta" onchange="renderHistorial()" title="Hasta">
+          <button class="btn btn-sm" style="background:#10b981;color:#fff;font-weight:600" onclick="exportarHistorialExcel()" title="Descargar en Excel exactamente lo que está filtrado, con toda la info de la orden"><i class="bi bi-file-earmark-excel-fill"></i> Descargar Excel</button>
         </div>
       </div>
       <div class="card"><div class="table-wrap" id="tabla-historial"></div></div>
@@ -4284,16 +4285,14 @@ function confirmarImport(){
 // ════════════════════════════════════════
 //  HISTORIAL
 // ════════════════════════════════════════
-function renderHistorial(){
-  const movs=getMovs(),prods=getProds();
-  const pf=document.getElementById('h-prod'),cur=pf.value;
-  pf.innerHTML='<option value="">Todos los productos</option>';
-  prods.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.nombre;if(p.id===cur)o.selected=true;pf.appendChild(o);});
-  const tf=document.getElementById('h-tipo').value,
-        pfl=document.getElementById('h-prod').value,
-        d1=document.getElementById('h-desde').value,
-        d2=document.getElementById('h-hasta').value;
-  let list=[...movs].reverse();
+// Aplica los filtros actuales del Historial (tipo/producto/fechas) y devuelve
+// los movimientos ya filtrados. Lo usan tanto la tabla como la exportación.
+function _movimientosFiltradosHistorial(){
+  const tf=document.getElementById('h-tipo')?.value||'',
+        pfl=document.getElementById('h-prod')?.value||'',
+        d1=document.getElementById('h-desde')?.value||'',
+        d2=document.getElementById('h-hasta')?.value||'';
+  let list=[...getMovs()].reverse();
   if(tf){
     if(tf==='entrada')          list=list.filter(m=>m.tipo==='entrada' && (!m.subtipo || m.subtipo==='compra'));
     else if(tf==='salida')      list=list.filter(m=>m.tipo==='salida');
@@ -4303,6 +4302,14 @@ function renderHistorial(){
   if(pfl)list=list.filter(m=>m.productoId===pfl);
   if(d1)list=list.filter(m=>m.fecha>=d1);
   if(d2)list=list.filter(m=>m.fecha<=d2);
+  return list;
+}
+function renderHistorial(){
+  const prods=getProds();
+  const pf=document.getElementById('h-prod'),cur=pf.value;
+  pf.innerHTML='<option value="">Todos los productos</option>';
+  prods.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.nombre;if(p.id===cur)o.selected=true;pf.appendChild(o);});
+  let list=_movimientosFiltradosHistorial();
   const wrap=document.getElementById('tabla-historial');
   if(!list.length){wrap.innerHTML='<div class="empty"><div class="empty-icon"><i class="bi bi-clock-history" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin movimientos</h3></div>';return;}
   let html=`<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Variante</th><th>Cantidad</th><th>Referencia</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>`;
@@ -4318,6 +4325,74 @@ function renderHistorial(){
     html+=`<tr><td style="white-space:nowrap">${fmtDT(m.fecha,m.ts)}</td><td>${tipoBadge}</td><td>${p?.nombre||'<span class="text-muted">Eliminado</span>'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${signo}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.notas||'—'}</td></tr>`;
   });
   wrap.innerHTML=html+'</tbody></table>';
+}
+
+// Descarga en Excel EXACTAMENTE los movimientos filtrados del historial, con
+// toda la información de la orden ligada (cliente, envío, precio, estado, guía).
+async function exportarHistorialExcel(){
+  if(typeof ExcelJS==='undefined'){ toast('Librería ExcelJS no cargada — refresca la página'); return; }
+  const list=_movimientosFiltradosHistorial();
+  if(!list.length){ toast('No hay movimientos con esos filtros para exportar'); return; }
+  toast('Generando Excel del historial…');
+  try{
+    const prods=getProds(), pedidos=getPedidos(), guias=getGuias();
+    const ESTADOS={pendiente:'Pendiente',aprobado:'Aprobado',enviado:'En tránsito',en_oficina:'En oficina',entregado:'Entregado',novedad:'Novedad',en_devolucion:'En devolución',cancelado:'Cancelado'};
+    const tipoTxt=m=> m.tipo==='por_reponer'?'Por reponer'
+      : m.tipo==='entrada'?(m.subtipo==='restitucion'?'Cancelado (restitución)':m.subtipo==='devolucion'?'Devolución':'Compra / Entrada')
+      : m.subtipo==='backorder'?'Salida (reposición)':'Salida';
+    const wb=new ExcelJS.Workbook(); wb.creator='Titan Botas'; wb.created=new Date();
+    const ws=wb.addWorksheet('Historial',{views:[{showGridLines:false}]});
+    const HDR=['Fecha','Hora','Tipo','Producto','Talla','Color','Cantidad','Referencia','Usuario','Notas','Pedido #','Guía','Cliente','Teléfono','Cédula','Ciudad','Departamento','Dirección','Barrio','Forma de pago','Precio venta','Estado pedido','Vendedor'];
+    const W=[12,10,20,26,8,12,10,22,16,26,12,16,22,13,12,16,16,28,16,15,13,15,18];
+    ws.columns=HDR.map((h,i)=>({width:W[i]||14}));
+    HDR.forEach((h,i)=>{ const c=ws.getRow(1).getCell(i+1); c.value=h; c.font={bold:true,color:{argb:'FFFFFFFF'},size:10}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF404040'}}; c.alignment={horizontal:'center',vertical:'middle',wrapText:true}; });
+    ws.getRow(1).height=28;
+    let r=2;
+    list.forEach(m=>{
+      const p=prods.find(x=>x.id===m.productoId);
+      const v=p?.variantes.find(x=>x.id===m.varianteId);
+      const ped=m.pedidoId?pedidos.find(x=>x.id===m.pedidoId):null;
+      const cl=ped?.cliente||{};
+      const guia=ped?guias.find(g=>g.pedidoId===ped.id):null;
+      const cant=(m.tipo==='entrada'?1:m.tipo==='por_reponer'?1:-1)*(m.cantidad||0);
+      const row=ws.getRow(r);
+      row.getCell(1).value=_fechaExcel(m.fecha); row.getCell(1).numFmt='dd/mm/yyyy';
+      row.getCell(2).value=m.ts?new Date(m.ts):null; row.getCell(2).numFmt='hh:mm AM/PM';
+      row.getCell(3).value=tipoTxt(m);
+      row.getCell(4).value=p?.nombre||'(producto eliminado)';
+      row.getCell(5).value=v?v.talla:'';
+      row.getCell(6).value=v?v.color:'';
+      row.getCell(7).value=cant;
+      row.getCell(8).value=m.referencia||'';
+      row.getCell(9).value=m.usuario||'';
+      row.getCell(10).value=m.notas||'';
+      row.getCell(11).value=ped?('#'+ped.id.slice(-6)):'';
+      row.getCell(12).value=guia?guia.numero:'';
+      row.getCell(13).value=cl.nombre||'';
+      row.getCell(14).value=cl.telefono||'';
+      row.getCell(15).value=cl.cedula||'';
+      row.getCell(16).value=cl.ciudad||'';
+      row.getCell(17).value=cl.departamento||'';
+      row.getCell(18).value=cl.direccion||'';
+      row.getCell(19).value=cl.barrio||'';
+      row.getCell(20).value=ped?(ped.formaPago||''):'';
+      row.getCell(21).value=ped?(ped.precioVenta||0):null; if(ped) row.getCell(21).numFmt='"$"#,##0';
+      row.getCell(22).value=ped?(ped.backorderPendiente?'Por reponer':(ESTADOS[estadoEfectivo(ped)]||ped.estado||'')):'';
+      row.getCell(23).value=ped?(ped.vendedorNombre||''):'';
+      [1,2,5,6,7,11,12].forEach(c=>row.getCell(c).alignment={horizontal:'center'});
+      r++;
+    });
+    // Autofiltro sobre el encabezado.
+    ws.autoFilter={ from:{row:1,column:1}, to:{row:1,column:HDR.length} };
+    ws.views=[{state:'frozen',ySplit:1,showGridLines:false}];
+    const d=new Date();
+    const nombre=`Historial ${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.xlsx`;
+    await _descargarWb(wb, nombre);
+    toast(`Excel descargado ✅ (${list.length} movimiento${list.length===1?'':'s'})`);
+  }catch(err){
+    console.error('exportarHistorialExcel falló:',err);
+    toast('Error: '+(((err&&(err.message||err.toString()))||'desconocido')).slice(0,140));
+  }
 }
 
 // ════════════════════════════════════════
