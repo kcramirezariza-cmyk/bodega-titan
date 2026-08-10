@@ -4306,6 +4306,7 @@ function _movimientosFiltradosHistorial(){
 }
 function renderHistorial(){
   const prods=getProds();
+  const _esAdminHist=isAdmin();
   const pf=document.getElementById('h-prod'),cur=pf.value;
   pf.innerHTML='<option value="">Todos los productos</option>';
   prods.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.nombre;if(p.id===cur)o.selected=true;pf.appendChild(o);});
@@ -4314,15 +4315,20 @@ function renderHistorial(){
   if(!list.length){wrap.innerHTML='<div class="empty"><div class="empty-icon"><i class="bi bi-clock-history" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin movimientos</h3></div>';return;}
   let html=`<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Variante</th><th>Cantidad</th><th>Referencia</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>`;
   list.forEach(m=>{const p=prods.find(x=>x.id===m.productoId),v=p?.variantes.find(x=>x.id===m.varianteId);
+    const esDevol=m.tipo==='entrada' && m.subtipo==='devolucion';
     const tipoBadge=m.tipo==='por_reponer'
       ?'<span class="badge" style="background:#dc2626;color:#fff;font-weight:700"><i class="bi bi-exclamation-octagon-fill"></i> Por reponer</span>'
       :m.tipo==='entrada'
       ?(m.subtipo==='restitucion'?'<span class="badge badge-warning"><i class="bi bi-x-circle-fill"></i> Cancelado</span>'
-        :m.subtipo==='devolucion'?'<span class="badge badge-info">↩ Devolución</span>'
+        :m.subtipo==='devolucion'?(m.revisada?'<span class="badge" style="background:#16a34a;color:#fff;font-weight:700"><i class="bi bi-check-circle-fill"></i> Devolución revisada</span>':'<span class="badge badge-info">↩ Devolución</span>')
         :'<span class="badge badge-success">⬇ Compra</span>')
       :'<span class="badge badge-danger">⬆ Salida</span>';
+    // Chulito de revisión (solo admin, solo devoluciones). Es visual: no cambia stock.
+    const revBtn=(esDevol && _esAdminHist)
+      ?`<button class="btn-icon" title="${m.revisada?'Revisada — clic para desmarcar':'Marcar esta devolución como revisada (solo visual)'}" onclick="toggleRevisionMovimiento('${m.id}')" style="margin-left:6px;padding:2px 6px;font-size:11px;border:1px solid ${m.revisada?'#16a34a':'#cbd5e1'};border-radius:6px;background:${m.revisada?'#16a34a':'#fff'};color:${m.revisada?'#fff':'#64748b'};cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:4px;vertical-align:middle"><i class="bi bi-check-lg"></i> ${m.revisada?'Revisada':'Revisar'}</button>`
+      :'';
     const signo=m.tipo==='entrada'?'+':m.tipo==='por_reponer'?'':'-';
-    html+=`<tr><td style="white-space:nowrap">${fmtDT(m.fecha,m.ts)}</td><td>${tipoBadge}</td><td>${p?.nombre||'<span class="text-muted">Eliminado</span>'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${signo}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.notas||'—'}</td></tr>`;
+    html+=`<tr${esDevol&&m.revisada?' style="background:#f0fdf4"':''}><td style="white-space:nowrap">${fmtDT(m.fecha,m.ts)}</td><td style="white-space:nowrap">${tipoBadge}${revBtn}</td><td>${p?.nombre||'<span class="text-muted">Eliminado</span>'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${signo}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.notas||'—'}</td></tr>`;
   });
   wrap.innerHTML=html+'</tbody></table>';
 }
@@ -6310,6 +6316,20 @@ function toggleDevolucionRevisada(id){
   const revisada=!ped.devolucionRevisada;
   writePedido({...ped, devolucionRevisada:revisada, tsRevisionDevolucion:revisada?Date.now():undefined, revisadaPor:revisada?(CU?.nombre||''):undefined});
   toast(revisada?'✅ Devolución marcada como revisada':'Marca de revisión quitada');
+}
+// Marca/desmarca (solo admin) un MOVIMIENTO de devolución como revisado en el
+// Historial. Solo visual: actualiza el flag `revisada` del movimiento, sin tocar
+// el stock. Sirve para devoluciones con o sin pedido asociado.
+function toggleRevisionMovimiento(movId){
+  if(!isAdmin()){ toast('Solo el administrador puede marcar revisiones'); return; }
+  if(escrituraBloqueada()){ toast('Recarga la página (versión nueva)'); return; }
+  const i=localMovs.findIndex(m=>m.id===movId);
+  if(i<0) return;
+  const revisada=!localMovs[i].revisada;
+  localMovs[i]={...localMovs[i], revisada, tsRevision:revisada?Date.now():undefined, revisadaPor:revisada?(CU?.nombre||''):undefined};
+  if(USE_FIREBASE && REF.movs) REF.movs.child(movId).update({ revisada, tsRevision:revisada?Date.now():null, revisadaPor:revisada?(CU?.nombre||''):null }).catch(e=>console.warn('rev mov',e));
+  toast(revisada?'✅ Devolución marcada como revisada':'Marca de revisión quitada');
+  if(currentPage==='historial') renderHistorial();
 }
 
 const _MESES_NOMBRE=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
