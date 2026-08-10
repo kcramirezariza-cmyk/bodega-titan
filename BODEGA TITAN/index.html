@@ -4313,8 +4313,8 @@ function renderHistorial(){
   let list=_movimientosFiltradosHistorial();
   const wrap=document.getElementById('tabla-historial');
   if(!list.length){wrap.innerHTML='<div class="empty"><div class="empty-icon"><i class="bi bi-clock-history" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin movimientos</h3></div>';return;}
-  let html=`<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Variante</th><th>Cantidad</th><th>Referencia</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>`;
-  list.forEach(m=>{const p=prods.find(x=>x.id===m.productoId),v=p?.variantes.find(x=>x.id===m.varianteId);
+  let html=`<table><thead><tr><th style="width:44px;text-align:center">#</th><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Variante</th><th>Cantidad</th><th>Referencia</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>`;
+  list.forEach((m,idx)=>{const p=prods.find(x=>x.id===m.productoId),v=p?.variantes.find(x=>x.id===m.varianteId);
     const esDevol=m.tipo==='entrada' && m.subtipo==='devolucion';
     const tipoBadge=m.tipo==='por_reponer'
       ?'<span class="badge" style="background:#dc2626;color:#fff;font-weight:700"><i class="bi bi-exclamation-octagon-fill"></i> Por reponer</span>'
@@ -4328,7 +4328,7 @@ function renderHistorial(){
       ?`<button class="btn-icon" title="${m.revisada?'Revisada — clic para desmarcar':'Marcar esta devolución como revisada (solo visual)'}" onclick="toggleRevisionMovimiento('${m.id}')" style="margin-left:6px;padding:2px 6px;font-size:11px;border:1px solid ${m.revisada?'#16a34a':'#cbd5e1'};border-radius:6px;background:${m.revisada?'#16a34a':'#fff'};color:${m.revisada?'#fff':'#64748b'};cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:4px;vertical-align:middle"><i class="bi bi-check-lg"></i> ${m.revisada?'Revisada':'Revisar'}</button>`
       :'';
     const signo=m.tipo==='entrada'?'+':m.tipo==='por_reponer'?'':'-';
-    html+=`<tr${esDevol&&m.revisada?' style="background:#f0fdf4"':''}><td style="white-space:nowrap">${fmtDT(m.fecha,m.ts)}</td><td style="white-space:nowrap">${tipoBadge}${revBtn}</td><td>${p?.nombre||'<span class="text-muted">Eliminado</span>'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${signo}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.notas||'—'}</td></tr>`;
+    html+=`<tr${esDevol&&m.revisada?' style="background:#f0fdf4"':''}><td style="text-align:center;color:var(--muted);font-size:12px">${idx+1}</td><td style="white-space:nowrap">${fmtDT(m.fecha,m.ts)}</td><td style="white-space:nowrap">${tipoBadge}${revBtn}</td><td>${p?.nombre||'<span class="text-muted">Eliminado</span>'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${signo}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.notas||'—'}</td></tr>`;
   });
   wrap.innerHTML=html+'</tbody></table>';
 }
@@ -6675,8 +6675,8 @@ function renderAdminPedidos(){
           <button class="btn btn-sm btn-outline" onclick="limpiarFiltroFechaRango()"><i class="bi bi-x-lg"></i> Quitar rango</button>
         </div>`
       : '';
-  let html=banner+`<div class="card"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Producto</th><th>Cliente</th><th>Ciudad</th><th>Pago</th><th>Precio</th><th>Vendedor</th><th>Guía</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`;
-  pedidos.forEach(ped=>{
+  let html=banner+`<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:44px;text-align:center">#</th><th>Fecha</th><th>Producto</th><th>Cliente</th><th>Ciudad</th><th>Pago</th><th>Precio</th><th>Vendedor</th><th>Guía</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`;
+  pedidos.forEach((ped,idx)=>{
     const guia=getGuias().find(g=>g.pedidoId===ped.id);
     const precioBadge=ped.precioBajo
       ?`<div class="badge badge-warning" style="font-size:10px;margin-top:2px" title="Precio bajo el registrado"><i class="bi bi-exclamation-triangle-fill"></i> Bajo</div>`
@@ -6700,6 +6700,7 @@ function renderAdminPedidos(){
       ?` <span class="badge" style="background:#dc2626;color:#fff;font-size:9px;padding:2px 6px;margin-left:4px;font-weight:700" title="Vendido sin stock físico. Se entregará cuando el proveedor reponga (prioridad por orden de pedido)."><i class="bi bi-exclamation-octagon-fill"></i> POR REPONER${paresBO?` ${paresBO}`:''}</span>`
       :'';
     html+=`<tr${ped.backorderPendiente?' style="background:#fef2f2"':ped.precioBajo?' style="background:#fffbeb"':''}>
+      <td style="text-align:center;color:var(--muted);font-size:12px">${idx+1}</td>
       <td style="white-space:nowrap;font-size:12px">${fmtD(ped.fecha)}${ped.ts?`<div style="font-size:10px;color:var(--muted);margin-top:2px"><i class="bi bi-clock"></i> ${fmtT(ped.ts)}</div>`:''}</td>
       <td><div style="font-size:13px">${pedResumen(ped)}${comboBadge}${backorderBadge}</div>${paresInfo}</td>
       <td><strong>${ped.cliente.nombre}</strong><div style="font-size:11px;color:var(--muted)">${ped.cliente.telefono}</div>
