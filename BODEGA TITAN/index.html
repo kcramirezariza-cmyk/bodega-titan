@@ -265,7 +265,7 @@ textarea{resize:vertical}
 /* ── PICKER DE PRODUCTOS ── */
 .prod-card{border:2px solid var(--border);border-radius:12px;padding:0;cursor:pointer;transition:all .15s;overflow:hidden;background:#fff}
 .prod-card:hover{border-color:var(--primary);box-shadow:0 4px 16px rgba(99,102,241,.15);transform:translateY(-2px)}
-.prod-card.sin-stock{opacity:.45;cursor:not-allowed}
+.prod-card.sin-stock{opacity:.72;cursor:pointer}
 .prod-card-img{width:100%;height:110px;display:flex;align-items:center;justify-content:center;font-size:42px}
 .prod-card-body{padding:10px 10px 12px}
 .prod-card-name{font-size:12px;font-weight:700;line-height:1.3;margin-bottom:4px}
@@ -8517,14 +8517,14 @@ function renderPickerProductos(){
     const imgHtml=fotoPortada
       ? `<div class="prod-card-img" style="background:#fff;padding:0"><img src="${fotoPortada}" alt="${p.nombre}" style="width:100%;height:100%;object-fit:cover;${sinStock?'filter:grayscale(.7);opacity:.7':''}"></div>`
       : `<div class="prod-card-img" style="background:${bg}"><i class="bi ${icon}" style="color:${sinStock?'#94a3b8':'#6366f1'}"></i></div>`;
-    return `<div class="prod-card${sinStock?' sin-stock':''}" onclick="${sinStock?'toast(\'Sin stock disponible\')':'seleccionarProductoPicker(\''+p.id+'\')'}">
+    return `<div class="prod-card${sinStock?' sin-stock':''}" onclick="seleccionarProductoPicker('${p.id}')">
       ${imgHtml}
       <div class="prod-card-body">
         <div class="prod-card-name">${p.nombre}</div>
         <div class="prod-card-meta">${p.categoria||'Sin categoría'}${p.bodega?' · '+p.bodega:''}</div>
         ${tallas?`<div class="prod-card-meta" style="margin-top:2px">Tallas: ${tallas}${p.variantes.filter(v=>(v.stockActual||0)>0).length>4?'...':''}</div>`:''}
-        <div class="prod-card-stock" style="color:${sinStock?'var(--danger)':stock<=3?'var(--warning)':'var(--success)'}">
-          ${sinStock?'Sin stock':stock+' uds disponibles'}
+        <div class="prod-card-stock" style="color:${sinStock?'#dc2626':stock<=3?'var(--warning)':'var(--success)'}">
+          ${sinStock?'Sin stock · pedir por reponer':stock+' uds disponibles'}
         </div>
       </div>
     </div>`;
