@@ -595,7 +595,7 @@ textarea{resize:vertical}
       <div class="section-header">
         <div class="section-title"><i class="bi bi-clock-history" style="color:var(--primary)"></i> Historial de Movimientos</div>
         <div class="flex gap-8" style="flex-wrap:wrap">
-          <select id="h-tipo" onchange="renderHistorial()" style="width:auto">
+          <select id="h-tipo" onchange="filtrarHistorial()" style="width:auto">
             <option value="">Todos</option>
             <option value="entrada">Entradas</option>
             <option value="salida">Salidas</option>
@@ -603,9 +603,10 @@ textarea{resize:vertical}
             <option value="restitucion">Cancelado</option>
             <option value="devolucion">Devoluciones</option>
           </select>
-          <select id="h-prod" onchange="renderHistorial()" style="width:auto"><option value="">Todos los productos</option></select>
-          <input type="date" id="h-desde" onchange="renderHistorial()" title="Desde">
-          <input type="date" id="h-hasta" onchange="renderHistorial()" title="Hasta">
+          <select id="h-prod" onchange="filtrarHistorial()" style="width:auto"><option value="">Todos los productos</option></select>
+          <select id="h-vendedor" onchange="filtrarHistorial()" style="width:auto"><option value="">Todos los vendedores</option></select>
+          <input type="date" id="h-desde" onchange="filtrarHistorial()" title="Desde">
+          <input type="date" id="h-hasta" onchange="filtrarHistorial()" title="Hasta">
           <button class="btn btn-sm" style="background:#10b981;color:#fff;font-weight:600" onclick="exportarHistorialExcel()" title="Descargar en Excel exactamente lo que está filtrado, con toda la info de la orden"><i class="bi bi-file-earmark-excel-fill"></i> Descargar Excel</button>
         </div>
       </div>
@@ -2540,7 +2541,7 @@ function navigate(page) {
   if(page==='productos')       renderProductos();
   if(page==='entrada')         renderFormMov('in');
   if(page==='salida')          renderFormMov('out');
-  if(page==='historial')       renderHistorial();
+  if(page==='historial')       filtrarHistorial();
   if(page==='reportes')        renderReportes();
   if(page==='alertas')         renderAlertas();
   if(page==='usuarios')        renderUsuarios();
@@ -4285,11 +4286,15 @@ function confirmarImport(){
 // ════════════════════════════════════════
 //  HISTORIAL
 // ════════════════════════════════════════
-// Aplica los filtros actuales del Historial (tipo/producto/fechas) y devuelve
-// los movimientos ya filtrados. Lo usan tanto la tabla como la exportación.
+// Mapas de búsqueda O(1) para el Historial (se reconstruyen en cada render).
+let _histLimit=400; // cuántas filas se pintan (paginación para no congelar la UI)
+function filtrarHistorial(){ _histLimit=400; renderHistorial(); }
+// Aplica los filtros actuales del Historial (tipo/producto/vendedor/fechas) y
+// devuelve los movimientos ya filtrados. Lo usan la tabla y la exportación.
 function _movimientosFiltradosHistorial(){
   const tf=document.getElementById('h-tipo')?.value||'',
         pfl=document.getElementById('h-prod')?.value||'',
+        vend=document.getElementById('h-vendedor')?.value||'',
         d1=document.getElementById('h-desde')?.value||'',
         d2=document.getElementById('h-hasta')?.value||'';
   let list=[...getMovs()].reverse();
@@ -4302,20 +4307,39 @@ function _movimientosFiltradosHistorial(){
   if(pfl)list=list.filter(m=>m.productoId===pfl);
   if(d1)list=list.filter(m=>m.fecha>=d1);
   if(d2)list=list.filter(m=>m.fecha<=d2);
+  if(vend){
+    const pedMap=new Map(getPedidos().map(p=>[p.id,p]));
+    list=list.filter(m=> m.pedidoId && (pedMap.get(m.pedidoId)?.vendedorNombre)===vend);
+  }
   return list;
 }
 function renderHistorial(){
   const prods=getProds();
+  const pedidos=getPedidos();
   const _esAdminHist=isAdmin();
+  // Poblar selector de PRODUCTO (una vez / preservando selección).
   const pf=document.getElementById('h-prod'),cur=pf.value;
-  pf.innerHTML='<option value="">Todos los productos</option>';
-  prods.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.nombre;if(p.id===cur)o.selected=true;pf.appendChild(o);});
-  let list=_movimientosFiltradosHistorial();
+  pf.innerHTML='<option value="">Todos los productos</option>'+prods.map(p=>`<option value="${p.id}"${p.id===cur?' selected':''}>${p.nombre}</option>`).join('');
+  // Poblar selector de VENDEDOR.
+  const vf=document.getElementById('h-vendedor');
+  if(vf){ const cv=vf.value; const vends=[...new Set(pedidos.map(p=>p.vendedorNombre).filter(Boolean))].sort(); vf.innerHTML='<option value="">Todos los vendedores</option>'+vends.map(v=>`<option value="${v}"${v===cv?' selected':''}>${v}</option>`).join(''); }
+  const list=_movimientosFiltradosHistorial();
   const wrap=document.getElementById('tabla-historial');
   if(!list.length){wrap.innerHTML='<div class="empty"><div class="empty-icon"><i class="bi bi-clock-history" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin movimientos</h3></div>';return;}
-  let html=`<table><thead><tr><th style="width:44px;text-align:center">#</th><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Variante</th><th>Cantidad</th><th>Referencia</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>`;
-  list.forEach((m,idx)=>{const p=prods.find(x=>x.id===m.productoId),v=p?.variantes.find(x=>x.id===m.varianteId);
+  // Mapas O(1) (evita .find por fila → esto era lo que hacía lento el historial).
+  const prodMap=new Map(prods.map(p=>[p.id,p]));
+  const pedMap=new Map(pedidos.map(p=>[p.id,p]));
+  // Paginación: solo se pintan las primeras _histLimit filas.
+  const shown=list.slice(0,_histLimit);
+  let html=`<div style="padding:8px 12px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><span><strong style="color:var(--text)">${list.length}</strong> movimiento(s) con estos filtros${list.length>shown.length?` · mostrando ${shown.length}`:''}</span></div>`;
+  html+=`<table><thead><tr><th style="width:44px;text-align:center">#</th><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cliente</th><th>Variante</th><th>Cantidad</th><th>Referencia</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>`;
+  shown.forEach((m,idx)=>{
+    const p=prodMap.get(m.productoId), v=p?p.variantes.find(x=>x.id===m.varianteId):null;
     const esDevol=m.tipo==='entrada' && m.subtipo==='devolucion';
+    const ped=m.pedidoId?pedMap.get(m.pedidoId):null;
+    // Cliente: el del pedido si el movimiento viene de una orden (devolución de
+    // una vendedora); si es una devolución manual sin pedido → "Administrador".
+    const cliente = (ped&&ped.cliente&&ped.cliente.nombre) ? ped.cliente.nombre : (esDevol ? 'Administrador' : '');
     const tipoBadge=m.tipo==='por_reponer'
       ?'<span class="badge" style="background:#dc2626;color:#fff;font-weight:700"><i class="bi bi-exclamation-octagon-fill"></i> Por reponer</span>'
       :m.tipo==='entrada'
@@ -4323,14 +4347,17 @@ function renderHistorial(){
         :m.subtipo==='devolucion'?(m.revisada?'<span class="badge" style="background:#16a34a;color:#fff;font-weight:700"><i class="bi bi-check-circle-fill"></i> Devolución revisada</span>':'<span class="badge badge-info">↩ Devolución</span>')
         :'<span class="badge badge-success">⬇ Compra</span>')
       :'<span class="badge badge-danger">⬆ Salida</span>';
-    // Chulito de revisión (solo admin, solo devoluciones). Es visual: no cambia stock.
     const revBtn=(esDevol && _esAdminHist)
       ?`<button class="btn-icon" title="${m.revisada?'Revisada — clic para desmarcar':'Marcar esta devolución como revisada (solo visual)'}" onclick="toggleRevisionMovimiento('${m.id}')" style="margin-left:6px;padding:2px 6px;font-size:11px;border:1px solid ${m.revisada?'#16a34a':'#cbd5e1'};border-radius:6px;background:${m.revisada?'#16a34a':'#fff'};color:${m.revisada?'#fff':'#64748b'};cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:4px;vertical-align:middle"><i class="bi bi-check-lg"></i> ${m.revisada?'Revisada':'Revisar'}</button>`
       :'';
     const signo=m.tipo==='entrada'?'+':m.tipo==='por_reponer'?'':'-';
-    html+=`<tr${esDevol&&m.revisada?' style="background:#f0fdf4"':''}><td style="text-align:center;color:var(--muted);font-size:12px">${idx+1}</td><td style="white-space:nowrap">${fmtDT(m.fecha,m.ts)}</td><td style="white-space:nowrap">${tipoBadge}${revBtn}</td><td>${p?.nombre||'<span class="text-muted">Eliminado</span>'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${signo}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.notas||'—'}</td></tr>`;
+    html+=`<tr${esDevol&&m.revisada?' style="background:#f0fdf4"':''}><td style="text-align:center;color:var(--muted);font-size:12px">${idx+1}</td><td style="white-space:nowrap">${fmtDT(m.fecha,m.ts)}</td><td style="white-space:nowrap">${tipoBadge}${revBtn}</td><td>${p?p.nombre:'<span class="text-muted">Eliminado</span>'}</td><td style="font-size:12px">${cliente||'—'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${signo}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.notas||'—'}</td></tr>`;
   });
-  wrap.innerHTML=html+'</tbody></table>';
+  html+='</tbody></table>';
+  if(list.length>shown.length){
+    html+=`<div style="text-align:center;padding:12px"><button class="btn btn-outline btn-sm" onclick="_histLimit+=400;renderHistorial()"><i class="bi bi-arrow-down-circle"></i> Cargar más (${list.length-shown.length} restantes)</button></div>`;
+  }
+  wrap.innerHTML=html;
 }
 
 // Descarga en Excel EXACTAMENTE los movimientos filtrados del historial, con
