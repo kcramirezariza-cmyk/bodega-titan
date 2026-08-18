@@ -1,0 +1,16 @@
+{
+  "name": "Botas Titán — Inventario",
+  "short_name": "Botas Titán",
+  "description": "Gestión de inventario y pedidos de Botas Titán.",
+  "lang": "es",
+  "start_url": "index.html",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#1e1b4b",
+  "icons": [
+    { "src": "logo-titan.jpg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any" },
+    { "src": "logo-titan.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" }
+  ]
+}
