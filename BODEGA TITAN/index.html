@@ -5951,7 +5951,13 @@ function eliminarDuplicadosCancelados(pedNuevo){
   return dups.length;
 }
 
+let _registrandoPedido=false; // candado inmediato anti doble-envío
 function registrarPedido(){
+  // Anti doble-click: si ya hay un registro EN CURSO (incluida la lectura async
+  // de stock previa), ignoramos el segundo clic. bloquearOperacion se activa más
+  // tarde (tras leer el stock del servidor), así que este candado cubre esa
+  // ventana en la que el botón aún no estaba deshabilitado.
+  if(_registrandoPedido){ toast('Espera, tu pedido se está registrando…'); return; }
   if(!carrito.length){toast('Agrega al menos un producto al carrito');return;}
   if(esVentaGrupo(tipoVenta)){
     const n=COMBO_N[tipoVenta];
@@ -6056,6 +6062,7 @@ function registrarPedido(){
     const detalles=erroresBloqueantes.join('\n');
     toast(`⚠️ No se puede registrar:\n\n${detalles}\n\nActualiza el inventario e intenta de nuevo.`);
     console.warn('[PEDIDO RECHAZADO - VARIANTE INEXISTENTE]',{carrito,erroresBloqueantes,timestamp:new Date().toISOString(),usuario:CU?.nombre});
+    _liberarRegistro();
     return;
   }
   const clienteInfo={
@@ -6128,6 +6135,7 @@ function registrarPedido(){
     aplicarSalidaStockPedido(ped, function(ok, info){
       if(!ok){
         liberarOperacion('registrarPedido','btn-registrar-pedido');
+        _liberarRegistro();
         const motivo=(info&&info.motivo)?info.motivo:'no se pudo descontar el stock.';
         toast('⚠️ No se pudo registrar. El pedido NO se creó.\n\nMotivo: '+motivo, 8000);
         console.error('[PEDIDO RECHAZADO - TRANSACCIÓN DE STOCK ABORTADA]',{motivo,items,timestamp:new Date().toISOString(),usuario:CU?.nombre});
@@ -6170,6 +6178,7 @@ function registrarPedido(){
    const finalizarOk=()=>{
     // El pedido quedó confirmado en el servidor: se puede volver a registrar.
     liberarOperacion('registrarPedido','btn-registrar-pedido');
+    _liberarRegistro();
     // ── Limpieza de duplicado CANCELADO ────────────────────────────────
     // Si el mismo vendedor ya subió HOY un pedido idéntico (mismo cliente y
     // mismos productos) y lo CANCELÓ, lo eliminamos de inmediato. Así, al subir
@@ -6261,6 +6270,17 @@ function registrarPedido(){
    }
   }
   } // ── fin _continuarRegistroConStock ──
+
+  // ── Candado inmediato: a partir de aquí el registro está EN CURSO ──
+  // Deshabilitamos el botón y marcamos la bandera ANTES de la lectura async,
+  // para que un segundo clic no dispare un segundo registro. Un temporizador de
+  // seguridad libera la bandera si algo se cuelga (red lenta / sin respuesta).
+  _registrandoPedido=true;
+  const _btnReg=document.getElementById('btn-registrar-pedido');
+  if(_btnReg){ _btnReg.disabled=true; _btnReg.style.opacity='.6'; }
+  const _liberarRegistro=()=>{ _registrandoPedido=false; const b=document.getElementById('btn-registrar-pedido'); if(b){ b.disabled=false; b.style.opacity=''; } };
+  clearTimeout(window._regPedidoTO);
+  window._regPedidoTO=setTimeout(_liberarRegistro, 20000);
 
   // Lectura FRESCA del inventario del servidor antes de validar/registrar.
   // Así la validación usa el stock real del servidor (no una caché móvil
