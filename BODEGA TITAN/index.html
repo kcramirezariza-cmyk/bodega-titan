@@ -956,9 +956,9 @@ textarea{resize:vertical}
     <div class="page" id="page-admin-pedidos">
       <div class="section-header">
         <div class="section-title"><i class="bi bi-card-list" style="color:var(--primary)"></i> Todos los Pedidos</div>
-        <div class="flex gap-8" style="flex-wrap:wrap">
-          <select id="filter-admin-pedidos" onchange="renderAdminPedidos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
-            <option value="">Todos los estados</option>
+        <div class="flex" style="flex-wrap:wrap;gap:6px;align-items:center">
+          <select id="filter-admin-pedidos" onchange="renderAdminPedidos()" title="Filtrar por estado" style="width:auto;font-size:13px;padding:6px 9px;border:1px solid var(--border);border-radius:8px">
+            <option value="">Estado</option>
             <option value="pendiente">Pendiente</option>
             <option value="aprobado">Aprobado</option>
             <option value="enviado">En tránsito</option>
@@ -968,14 +968,14 @@ textarea{resize:vertical}
             <option value="en_devolucion">En devolución</option>
             <option value="cancelado">Cancelado</option>
           </select>
-          <button type="button" id="btn-filtro-backorder" onclick="toggleFiltroBackorder()" title="Ver solo pedidos con pares vendidos sin stock físico (por reponer)" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:7px 10px;border:1px solid #fca5a5;border-radius:8px;background:#fff;color:#dc2626;cursor:pointer;font-weight:600">
+          <button type="button" id="btn-filtro-backorder" onclick="toggleFiltroBackorder()" title="Ver solo pedidos con pares vendidos sin stock físico (por reponer)" style="display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:6px 9px;border:1px solid #fca5a5;border-radius:8px;background:#fff;color:#dc2626;cursor:pointer;font-weight:600">
             <i class="bi bi-exclamation-octagon-fill"></i> Por reponer <span id="badge-count-backorder" style="display:none;background:#dc2626;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700">0</span>
           </button>
-          <select id="filter-admin-vendedor" onchange="renderAdminPedidos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
-            <option value="">Todos los vendedores</option>
+          <select id="filter-admin-vendedor" onchange="renderAdminPedidos()" title="Filtrar por vendedor" style="width:auto;font-size:13px;padding:6px 9px;border:1px solid var(--border);border-radius:8px">
+            <option value="">Vendedor</option>
           </select>
-          <select id="filter-admin-pago" onchange="renderAdminPedidos()" title="Filtrar por forma de pago" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
-            <option value="">Todas las formas de pago</option>
+          <select id="filter-admin-pago" onchange="renderAdminPedidos()" title="Filtrar por forma de pago" style="width:auto;font-size:13px;padding:6px 9px;border:1px solid var(--border);border-radius:8px">
+            <option value="">Pagos</option>
             <option value="contraentrega">Contraentrega</option>
             <option value="adelantado">Pago adelantado</option>
             <option value="addi">Addi</option>
@@ -1000,10 +1000,10 @@ textarea{resize:vertical}
           </div>
           <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:4px 10px">
             <i class="bi bi-search" style="color:var(--muted);font-size:13px"></i>
-            <input type="text" id="filter-admin-buscar" placeholder="Nombre o teléfono del cliente..." oninput="renderAdminPedidos()" style="border:none;background:transparent;font-size:13px;padding:3px 4px;width:220px;outline:none">
+            <input type="text" id="filter-admin-buscar" placeholder="Cliente o teléfono…" oninput="renderAdminPedidos()" style="border:none;background:transparent;font-size:13px;padding:3px 4px;width:160px;outline:none">
             <button class="btn-icon" onclick="document.getElementById('filter-admin-buscar').value='';renderAdminPedidos()" title="Limpiar búsqueda" style="padding:2px 4px"><i class="bi bi-x-lg" style="font-size:11px"></i></button>
           </div>
-          <button class="btn btn-success btn-sm" onclick="exportarGuiasMasivas()" id="btn-guias-masivas" style="display:none"><i class="bi bi-file-earmark-spreadsheet-fill"></i> Excel guías masivas</button>
+          <button class="btn btn-success btn-sm" onclick="exportarGuiasMasivas()" id="btn-guias-masivas" style="display:none" title="Descargar Excel de guías masivas"><i class="bi bi-file-earmark-spreadsheet-fill"></i> Guías</button>
         </div>
       </div>
       <div id="admin-pedidos-content"></div>
