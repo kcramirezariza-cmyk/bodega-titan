@@ -974,6 +974,16 @@ textarea{resize:vertical}
           <select id="filter-admin-vendedor" onchange="renderAdminPedidos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
             <option value="">Todos los vendedores</option>
           </select>
+          <select id="filter-admin-pago" onchange="renderAdminPedidos()" title="Filtrar por forma de pago" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
+            <option value="">Todas las formas de pago</option>
+            <option value="contraentrega">Contraentrega</option>
+            <option value="adelantado">Pago adelantado</option>
+            <option value="addi">Addi</option>
+            <option value="sistecredito">Sistecredito</option>
+            <option value="garantia">Garantía</option>
+            <option value="cambio">Cambio</option>
+            <option value="promocion">Promoción</option>
+          </select>
           <div style="position:relative;display:inline-block">
             <button class="btn btn-outline btn-sm" onclick="toggleFiltroFecha()" title="Mostrar/ocultar filtro por fecha"><i class="bi bi-calendar-range"></i> Fecha <i class="bi bi-chevron-down" id="fecha-toggle-icon" style="transition:transform 0.2s"></i></button>
             <div id="filtro-fecha-panel" style="display:none;position:absolute;top:100%;left:0;margin-top:6px;background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px;gap:10px;flex-direction:column;white-space:nowrap;z-index:1001;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:340px">
@@ -6679,6 +6689,7 @@ function renderAdminPedidos(){
     if(filtroVend) vselEl.value=filtroVend;
   }
   const filtroBuscar=(document.getElementById('filter-admin-buscar')?.value||'').toLowerCase().trim();
+  const filtroPago=document.getElementById('filter-admin-pago')?.value||'';
   let pedidos=getPedidos();
   // Contador global de pedidos con pares "por reponer" (backorder) y su total de pares.
   const pedsBackorder=getPedidos().filter(p=>p.backorderPendiente);
@@ -6696,6 +6707,7 @@ function renderAdminPedidos(){
   if(_soloBackorder) pedidos=pedidos.filter(p=>p.backorderPendiente);
   if(filtroEstado) pedidos=pedidos.filter(p=>estadoEfectivo(p)===filtroEstado);
   if(filtroVend)   pedidos=pedidos.filter(p=>p.vendedorNombre===filtroVend);
+  if(filtroPago)   pedidos=pedidos.filter(p=>(p.formaPago||'')===filtroPago);
   if(filtroBuscar){const _fbd=filtroBuscar.replace(/\D/g,'');pedidos=pedidos.filter(p=>{const c=p.cliente||{};return (c.nombre||'').toLowerCase().includes(filtroBuscar)||(_fbd&&(c.telefono||'').replace(/\D/g,'').includes(_fbd))||(c.ciudad||'').toLowerCase().includes(filtroBuscar)||(c.cedula||'').includes(filtroBuscar);});}
   if(filtroFechaDesde||filtroFechaHasta){
     const desdeTs=_filtroTsInicio(filtroFechaDesde);
@@ -6718,7 +6730,7 @@ function renderAdminPedidos(){
   const btnGuias=document.getElementById('btn-guias-masivas');
   if(btnGuias) btnGuias.style.display=pedidos.length?'inline-flex':'none';
   const el=document.getElementById('admin-pedidos-content');
-  if(!pedidos.length){el.innerHTML=`<div class="card"><div class="empty"><div class="empty-icon"><i class="bi bi-bag-x" style="font-size:38px;color:var(--muted)"></i></div><h3>${_soloBackorder?'No hay pedidos por reponer 🎉':(filtroEstado||filtroVend||rotuloRango?'Sin pedidos con esos filtros'+(rotuloRango?' ('+rotuloRango+')':''):'No hay pedidos registrados')}</h3></div></div>`;return;}
+  if(!pedidos.length){el.innerHTML=`<div class="card"><div class="empty"><div class="empty-icon"><i class="bi bi-bag-x" style="font-size:38px;color:var(--muted)"></i></div><h3>${_soloBackorder?'No hay pedidos por reponer 🎉':(filtroEstado||filtroVend||filtroPago||rotuloRango?'Sin pedidos con esos filtros'+(rotuloRango?' ('+rotuloRango+')':''):'No hay pedidos registrados')}</h3></div></div>`;return;}
   const banner=rotuloRango
       ? `<div class="card mb-16" style="background:linear-gradient(135deg,#e0e7ff,#ede9fe);border:1px solid #c7d2fe;display:flex;align-items:center;justify-content:space-between;padding:12px 16px">
           <div style="display:flex;align-items:center;gap:10px">
