@@ -7529,7 +7529,15 @@ function renderGuiasTabla(){
   cont.innerHTML=`<table><thead><tr><th>Guía</th><th>Cliente</th><th>Producto</th><th>Vendedor</th><th>Transportadora</th><th>Estado rastreo</th><th>Últ. rastreo</th><th>Acciones</th></tr></thead><tbody>${rows.map(({g,ped})=>{
     // Badge basado en estadoActual de la guía (fuente de verdad del rastreo)
     const eu=estadoGuiaUI(g);
-    const badgeGuia=eu==='entregada'?estadoBadge('entregado'):eu==='novedad'?estadoBadge('novedad'):eu==='devuelta'?estadoBadge('en_devolucion'):eu==='en_oficina'?'<span class="badge badge-info"><i class="bi bi-building"></i> En oficina</span>':eu==='en_transito'?'<span class="badge badge-enviado"><i class="bi bi-truck"></i> En tránsito</span>':'<span class="badge badge-gray"><i class="bi bi-hourglass-split"></i> Registrada</span>';
+    const esDevol=eu==='devuelta';
+    // Si la devolución ya fue revisada por el admin → badge verde (solo visual).
+    const badgeGuia=(esDevol && ped && ped.devolucionRevisada)
+      ?'<span class="badge" style="background:#16a34a;color:#fff;font-weight:700"><i class="bi bi-check-circle-fill"></i> Devolución revisada</span>'
+      :eu==='entregada'?estadoBadge('entregado'):eu==='novedad'?estadoBadge('novedad'):esDevol?estadoBadge('en_devolucion'):eu==='en_oficina'?'<span class="badge badge-info"><i class="bi bi-building"></i> En oficina</span>':eu==='en_transito'?'<span class="badge badge-enviado"><i class="bi bi-truck"></i> En tránsito</span>':'<span class="badge badge-gray"><i class="bi bi-hourglass-split"></i> Registrada</span>';
+    // Chulito "Revisar" (solo admin, solo devoluciones). Visual: no cambia stock.
+    const revBtnGuia=(esDevol && ped && isAdmin())
+      ?`<button class="btn-icon" title="${ped.devolucionRevisada?'Revisada — clic para desmarcar':'Marcar devolución como revisada (solo visual)'}" onclick="toggleDevolucionRevisada('${ped.id}')" style="margin-top:4px;padding:2px 6px;font-size:11px;border:1px solid ${ped.devolucionRevisada?'#16a34a':'#cbd5e1'};border-radius:6px;background:${ped.devolucionRevisada?'#16a34a':'#fff'};color:${ped.devolucionRevisada?'#fff':'#64748b'};cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:4px"><i class="bi bi-check-lg"></i> ${ped.devolucionRevisada?'Revisada':'Revisar'}</button>`
+      :'';
     const textoRastreo=g.estadoTexto?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${g.estadoTexto}</div>`:'';
     const ciudadDest=g.ciudadDestino?`<div style="font-size:10px;color:var(--muted)">${g.ciudadDestino}</div>`:'';
     return `<tr>
@@ -7538,7 +7546,7 @@ function renderGuiasTabla(){
       <td style="font-size:12px">${ped?`${ped.productoNombre}<div style="font-size:11px;color:var(--muted)">T${ped.talla}/${ped.color}</div>`:'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${ped?(ped.vendedorNombre||'—'):'—'}</td>
       <td style="font-size:12px;text-transform:capitalize">${g.transportadora||'—'}</td>
-      <td>${badgeGuia}${textoRastreo}${ciudadDest}</td>
+      <td>${badgeGuia}${textoRastreo}${ciudadDest}${revBtnGuia?'<div>'+revBtnGuia+'</div>':''}</td>
       <td style="font-size:11px;color:var(--muted)">${g.ultimoRastreo?fmtT(g.ultimoRastreo):'Nunca'}</td>
       <td><div style="display:flex;gap:4px;align-items:center">
         <button class="btn btn-sm btn-outline" onclick="rastrearGuia('${g.id}')"><i class="bi bi-arrow-repeat"></i> Rastrear</button>
