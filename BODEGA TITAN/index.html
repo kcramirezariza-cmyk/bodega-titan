@@ -2965,7 +2965,9 @@ function renderProductos() {
   const dtl=document.getElementById('deptos-dl'); if(dtl) dtl.innerHTML=dpts.map(c=>`<option value="${c}">`).join('');
   // Llenar filtros de la página productos
   const fpb=document.getElementById('filter-prod-bodega');
-  if(fpb){const cur=fpb.value;fpb.innerHTML='<option value="">Todas las bodegas</option>'+bods.map(b=>`<option value="${b}"${b===cur?' selected':''}>${b}</option>`).join('');}
+  // Unión: las 3 bodegas fijas SIEMPRE + cualquier otra que exista en datos (legado).
+  const bodsFiltro=[...BODEGAS_CANONICAS, ...bods.filter(b=>!BODEGAS_CANONICAS.includes(b))];
+  if(fpb){const cur=fpb.value;fpb.innerHTML='<option value="">Todas las bodegas</option>'+bodsFiltro.map(b=>`<option value="${b}"${b===cur?' selected':''}>${b}</option>`).join('');}
   const fpd=document.getElementById('filter-prod-depto');
   if(fpd){const cur=fpd.value;fpd.innerHTML='<option value="">Todos los departamentos</option>'+dpts.map(d=>`<option value="${d}"${d===cur?' selected':''}>${d}</option>`).join('');}
   const ft=document.getElementById('filter-prod-tipo')?.value||'';
@@ -4561,10 +4563,11 @@ function renderAlertas(){
   // Llenar selector de bodegas
   const sel=document.getElementById('filter-alerta-bodega');
   if(sel){
-    const bods=[...new Set(allProds.map(p=>p.bodega).filter(Boolean))];
+    const bodsReal=[...new Set(allProds.map(p=>p.bodega).filter(Boolean))];
+    const bods=[...BODEGAS_CANONICAS, ...bodsReal.filter(b=>!BODEGAS_CANONICAS.includes(b))];
     const cur=sel.value;
     sel.innerHTML='<option value="">Todas las bodegas</option>'+bods.map(b=>`<option value="${b}"${b===cur?' selected':''}>${b}</option>`).join('');
-    if(cur) sel.value=cur; else if(bods.includes('BODEGA 1 🔵')) sel.value='BODEGA 1 🔵';
+    if(cur) sel.value=cur; else sel.value='BODEGA 1 🔵';
   }
   const prods=allProds.filter(p=>{
     if(bodegaFiltro&&(p.bodega||'')!==bodegaFiltro) return false;
@@ -9266,6 +9269,10 @@ function esBodegaPromocion(bodega){ return _normTxt(bodega).includes('PROMOC'); 
 // en 0 el par no se puede seleccionar ni pasar a "por reponer". Una bodega vacía
 // (dato legado) se trata como BODEGA 1 por compatibilidad.
 function bodegaPermiteBackorder(bodega){ const t=_normTxt(bodega); return t==='' || t.includes('BODEGA 1'); }
+
+// Bodegas fijas del negocio. Se muestran SIEMPRE en los filtros aunque estén
+// vacías, para que el admin pueda navegarlas y asignar productos a ellas.
+const BODEGAS_CANONICAS=['BODEGA 1 🔵','BODEGA 2 🟡','PROMOCIÓNES 🔴'];
 
 // Rango 27-a-27. Si hoy>=27 → 27 del mes actual hasta hoy.
 // Si hoy<27 → 27 del mes anterior hasta hoy.
