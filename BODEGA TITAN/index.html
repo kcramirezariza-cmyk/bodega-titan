@@ -654,7 +654,7 @@ textarea{resize:vertical}
         <div class="flex gap-8" style="flex-wrap:wrap">
           <div class="search-wrap"><i class="bi bi-search"></i><input type="text" placeholder="Buscar producto..." id="search-alerta" oninput="renderAlertas()"></div>
           <select id="filter-alerta-bodega" onchange="renderAlertas()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
-            <option value="Bodega 1">Bodega 1</option>
+            <option value="BODEGA 1 🔵">BODEGA 1 🔵</option>
             <option value="">Todas las bodegas</option>
           </select>
         </div>
@@ -1169,7 +1169,7 @@ textarea{resize:vertical}
       <div class="form-group"><label>Categoría</label><input type="text" id="p-cat" placeholder="Botas, Zapatos..." list="cats-dl"><datalist id="cats-dl"></datalist></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group"><label>Bodega</label><input type="text" id="p-bodega" placeholder="Ej: Bodega Principal" list="bodegas-dl"><datalist id="bodegas-dl"></datalist></div>
+      <div class="form-group"><label>Bodega</label><select id="p-bodega"><option value="BODEGA 1 🔵">BODEGA 1 🔵</option><option value="PROMOCIÓNES 🔴">PROMOCIÓNES 🔴</option></select></div>
       <div class="form-group"><label>Departamento</label><input type="text" id="p-depto" placeholder="Ej: Calzado Formal" list="deptos-dl"><datalist id="deptos-dl"></datalist></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -3163,8 +3163,8 @@ function renderVariantPhotoThumb(rowId){
   }
 }
 
-function abrirModalProducto(){editingProdId=null;document.getElementById('mp-title').textContent='Nuevo Producto';['p-nombre','p-cat','p-bodega','p-depto','p-prov','p-desc'].forEach(id=>document.getElementById(id).value='');currentProductPhoto=null;renderProductPhotoThumb();document.getElementById('var-container').innerHTML='';varCnt=0;addVarRow();abrirModal('modal-producto');}
-function editarProducto(id){const p=getProds().find(x=>x.id===id);if(!p)return;editingProdId=id;document.getElementById('mp-title').textContent='Editar Producto';document.getElementById('p-nombre').value=p.nombre;document.getElementById('p-cat').value=p.categoria||'';document.getElementById('p-bodega').value=p.bodega||'';document.getElementById('p-depto').value=p.departamento||'';document.getElementById('p-prov').value=p.proveedor||'';document.getElementById('p-desc').value=p.descripcion||'';currentProductPhoto=p.foto||null;renderProductPhotoThumb();document.getElementById('var-container').innerHTML='';varCnt=0;p.variantes.forEach(v=>addVarRow(v));abrirModal('modal-producto');}
+function abrirModalProducto(){editingProdId=null;document.getElementById('mp-title').textContent='Nuevo Producto';['p-nombre','p-cat','p-depto','p-prov','p-desc'].forEach(id=>document.getElementById(id).value='');document.getElementById('p-bodega').value='BODEGA 1 🔵';currentProductPhoto=null;renderProductPhotoThumb();document.getElementById('var-container').innerHTML='';varCnt=0;addVarRow();abrirModal('modal-producto');}
+function editarProducto(id){const p=getProds().find(x=>x.id===id);if(!p)return;editingProdId=id;document.getElementById('mp-title').textContent='Editar Producto';document.getElementById('p-nombre').value=p.nombre;document.getElementById('p-cat').value=p.categoria||'';const selBod=document.getElementById('p-bodega');selBod.value=p.bodega||'BODEGA 1 🔵';if(selBod.selectedIndex<0)selBod.value=esBodegaPromocion(p.bodega)?'PROMOCIÓNES 🔴':'BODEGA 1 🔵';document.getElementById('p-depto').value=p.departamento||'';document.getElementById('p-prov').value=p.proveedor||'';document.getElementById('p-desc').value=p.descripcion||'';currentProductPhoto=p.foto||null;renderProductPhotoThumb();document.getElementById('var-container').innerHTML='';varCnt=0;p.variantes.forEach(v=>addVarRow(v));abrirModal('modal-producto');}
 
 function addVarRow(data={}) {
   const id='vr'+varCnt++,el=document.createElement('div');
@@ -4556,7 +4556,7 @@ function exportarExcel(){if(!window.XLSX){toast('Librería Excel no cargada');re
 // ════════════════════════════════════════
 function renderAlertas(){
   const allProds=getProds();
-  const bodegaFiltro=document.getElementById('filter-alerta-bodega')?.value??'Bodega 1';
+  const bodegaFiltro=document.getElementById('filter-alerta-bodega')?.value??'BODEGA 1 🔵';
   const searchQ=(document.getElementById('search-alerta')?.value||'').toLowerCase();
   // Llenar selector de bodegas
   const sel=document.getElementById('filter-alerta-bodega');
@@ -4564,7 +4564,7 @@ function renderAlertas(){
     const bods=[...new Set(allProds.map(p=>p.bodega).filter(Boolean))];
     const cur=sel.value;
     sel.innerHTML='<option value="">Todas las bodegas</option>'+bods.map(b=>`<option value="${b}"${b===cur?' selected':''}>${b}</option>`).join('');
-    if(cur) sel.value=cur; else if(bods.includes('Bodega 1')) sel.value='Bodega 1';
+    if(cur) sel.value=cur; else if(bods.includes('BODEGA 1 🔵')) sel.value='BODEGA 1 🔵';
   }
   const prods=allProds.filter(p=>{
     if(bodegaFiltro&&(p.bodega||'')!==bodegaFiltro) return false;
@@ -4928,7 +4928,7 @@ setInterval(tickComprasElapsed,30000);
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
 function toast(msg,ms=3200){const c=document.getElementById('toast-wrap'),el=document.createElement('div');el.className='toast';el.textContent=msg;c.appendChild(el);setTimeout(()=>el.remove(),ms);}
 function updateBadges(){
-  const prods=getProds().filter(p=>(p.bodega||'')==='Bodega 1'||!(p.bodega));
+  const prods=getProds().filter(p=>!esBodegaPromocion(p.bodega));
   let n=0;
   prods.forEach(p=>p.variantes.forEach(v=>{if((v.stockActual||0)<=(v.stockMinimo||0))n++;}));
   n+=getEstancados(7).filter(({p})=>prods.find(x=>x.id===p.id)).length;
@@ -5090,10 +5090,18 @@ function onPedVarChange(preservarEntrada){
   const fotoHtml=fotoVar
     ? `<img src="${fotoVar}" alt="${v.talla} ${v.color}" onclick="abrirLightboxSrc('${fotoVar.replace(/'/g,"\\'")}')" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid var(--border);cursor:zoom-in;flex-shrink:0">`
     : `<div style="width:64px;height:64px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#cbd5e1;flex-shrink:0"><i class="bi bi-image" style="font-size:22px"></i></div>`;
-  // BACKORDER: el selector de pares y el botón "Agregar al carrito" se muestran
-  // SIEMPRE, aunque el stock esté en 0 o negativo. La diferencia es solo el
-  // aviso. Los pares sin respaldo físico se marcan "POR REPONER" al registrar y
-  // se cubren cuando el proveedor entregue.
+  // BODEGA PROMOCIÓNES: NO admite backorder. Si no hay stock físico, el par no
+  // se puede seleccionar (no hay disponibilidad). Ocultamos el selector de pares
+  // y el botón "Agregar al carrito" y mostramos aviso de no disponible.
+  if(esBodegaPromocion(p.bodega) && stock<=0){
+    document.getElementById('ped-var-g2').style.display='none';
+    disp.innerHTML=`<div style="background:#fee2e2;border:1px solid #ef4444;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px">${fotoHtml}<div style="flex:1"><strong style="color:#991b1b"><i class="bi bi-x-octagon-fill"></i> No disponible</strong><div style="font-size:12px;color:#991b1b">Talla ${v.talla} · ${v.color} — producto de <strong>PROMOCIÓNES</strong> sin stock. No se puede pedir ni dejar "por reponer".</div></div><span style="font-size:18px;color:#ef4444"><i class="bi bi-slash-circle"></i></span></div>`;
+    return;
+  }
+  // BACKORDER (solo BODEGA 1): el selector de pares y el botón "Agregar al
+  // carrito" se muestran SIEMPRE, aunque el stock esté en 0 o negativo. La
+  // diferencia es solo el aviso. Los pares sin respaldo físico se marcan
+  // "POR REPONER" al registrar y se cubren cuando el proveedor entregue.
   document.getElementById('ped-var-g2').style.display='block';
   const ci=document.getElementById('ped-pares-custom');
   _maxDisponibleActual=999; // tope sano contra errores de tecleo (el backorder se permite)
@@ -5345,9 +5353,15 @@ function agregarAlCarrito(){
   if(!v){return;}
   const disponible = getStockDisponible(p, v);
   const cantidad=paresSeleccionados||1;
-  // BACKORDER: ya NO se bloquea por falta de stock. Si se piden más pares de los
-  // disponibles, la diferencia se venderá "sin stock físico" (el stock quedará
-  // en negativo al registrar) y se avisa al colaborador.
+  // PROMOCIÓNES: no admite backorder. No se puede pedir más de lo que hay en
+  // físico. Si no alcanza el stock, se bloquea (red de seguridad además de la UI).
+  if(esBodegaPromocion(p.bodega) && cantidad > Math.max(0, disponible)){
+    toast(`⛔ ${p.nombre} es de PROMOCIÓNES: solo hay ${Math.max(0,disponible)} disponible(s). No se puede dejar "por reponer".`, 5000);
+    return;
+  }
+  // BACKORDER (solo BODEGA 1): ya NO se bloquea por falta de stock. Si se piden
+  // más pares de los disponibles, la diferencia se venderá "sin stock físico"
+  // (el stock quedará "por reponer" al registrar) y se avisa al colaborador.
   const faltanteCart = Math.max(0, cantidad - Math.max(0, disponible));
   if(faltanteCart>0){
     toast(`⚠️ ${faltanteCart} par(es) de ${p.nombre} T${v.talla}/${v.color} se venderán SIN stock físico (por reponer). Bodega los entrega cuando llegue mercancía.`, 5000);
@@ -5727,9 +5741,15 @@ function aplicarSalidaStockPedido(ped, callback, opts){
           const v=findVar(current.variantes, it); // por id, o por talla+color si el id cambió
           if(!v){ motivoFallo=`La talla ${it.talla||'?'}/${it.color||'?'} de "${it.productoNombre||''}" no existe en el catálogo del servidor. Usa "Auditar stock" en Productos.`; return undefined; }
           // Solo se aborta por stock insuficiente si NO se permite negativo.
-          // Con permitirNeg (venta sin stock) el stock puede quedar en negativo.
-          if(!permitirNeg && (v.stockActual||0) < it.cantidad){
-            motivoFallo=`Stock insuficiente de ${it.talla||'?'}/${it.color||'?'}.`; return undefined;
+          // Con permitirNeg (venta sin stock) el stock puede quedar en 0 (backorder).
+          // EXCEPCIÓN: los productos de PROMOCIÓNES nunca admiten backorder, así que
+          // se abortan si no hay stock físico suficiente, aunque permitirNeg sea true.
+          const itNoBackorder = esBodegaPromocion(it.bodegaAlMomento || current.bodega);
+          if((!permitirNeg || itNoBackorder) && (v.stockActual||0) < it.cantidad){
+            motivoFallo = itNoBackorder
+              ? `${it.talla||'?'}/${it.color||'?'} de "${it.productoNombre||''}" es de PROMOCIÓNES: no hay stock suficiente y no admite "por reponer".`
+              : `Stock insuficiente de ${it.talla||'?'}/${it.color||'?'}.`;
+            return undefined;
           }
         }
         itemsDelProd.forEach(it=>{
@@ -5784,7 +5804,7 @@ function aplicarSalidaStockPedido(ped, callback, opts){
             // Variante inexistente siempre falla; stock insuficiente solo falla
             // cuando NO se permite negativo (venta con backorder).
             if(!v) stockOk=false;
-            else if(!permitirNeg && (v.stockActual||0) < it.cantidad) stockOk=false;
+            else if((!permitirNeg || esBodegaPromocion(it.bodegaAlMomento || original.bodega)) && (v.stockActual||0) < it.cantidad) stockOk=false;
           });
         }
         if(!stockOk){ huboError=true; terminarSiListo(); return; }
@@ -8586,6 +8606,8 @@ function renderPickerProductos(){
   grid.innerHTML=prods.map((p,i)=>{
     const stock=p.variantes.reduce((s,v)=>s+(v.stockActual||0),0);
     const sinStock=stock===0;
+    // PROMOCIÓNES sin stock = no disponible (no backorder): tarjeta no seleccionable.
+    const promoBloqueado = esBodegaPromocion(p.bodega) && sinStock;
     const bg=CAT_COLORS[i%CAT_COLORS.length];
     const icon=getCatIcon(p.categoria||'');
     const tallas=[...new Set(p.variantes.filter(v=>(v.stockActual||0)>0).map(v=>v.talla))].slice(0,4).join(', ');
@@ -8593,14 +8615,14 @@ function renderPickerProductos(){
     const imgHtml=fotoPortada
       ? `<div class="prod-card-img" style="background:#fff;padding:0"><img src="${fotoPortada}" alt="${p.nombre}" style="width:100%;height:100%;object-fit:cover;${sinStock?'filter:grayscale(.7);opacity:.7':''}"></div>`
       : `<div class="prod-card-img" style="background:${bg}"><i class="bi ${icon}" style="color:${sinStock?'#94a3b8':'#6366f1'}"></i></div>`;
-    return `<div class="prod-card${sinStock?' sin-stock':''}" onclick="seleccionarProductoPicker('${p.id}')">
+    return `<div class="prod-card${sinStock?' sin-stock':''}${promoBloqueado?' no-disponible':''}" ${promoBloqueado?`onclick="toast('Producto de PROMOCIÓNES sin stock: no hay disponibilidad y no admite por reponer.',4000)" style="cursor:not-allowed;opacity:.6"`:`onclick="seleccionarProductoPicker('${p.id}')"`}>
       ${imgHtml}
       <div class="prod-card-body">
         <div class="prod-card-name">${p.nombre}</div>
         <div class="prod-card-meta">${p.categoria||'Sin categoría'}${p.bodega?' · '+p.bodega:''}</div>
         ${tallas?`<div class="prod-card-meta" style="margin-top:2px">Tallas: ${tallas}${p.variantes.filter(v=>(v.stockActual||0)>0).length>4?'...':''}</div>`:''}
-        <div class="prod-card-stock" style="color:${sinStock?'#dc2626':stock<=3?'var(--warning)':'var(--success)'}">
-          ${sinStock?'Sin stock · pedir por reponer':stock+' uds disponibles'}
+        <div class="prod-card-stock" style="color:${promoBloqueado?'#991b1b':sinStock?'#dc2626':stock<=3?'var(--warning)':'var(--success)'}">
+          ${promoBloqueado?'No disponible · promoción sin stock':sinStock?'Sin stock · pedir por reponer':stock+' uds disponibles'}
         </div>
       </div>
     </div>`;
@@ -9233,6 +9255,11 @@ function renderPubliAlertas(rows){
 
 function _normTxt(s){ return String(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim(); }
 
+// ¿La bodega es PROMOCIÓNES? Robusto a emojis/tildes/mayúsculas.
+// Los nombres reales llevan sufijo emoji ("PROMOCIÓNES 🔴", "BODEGA 1 🔵"),
+// por eso comparamos por inclusión de la raíz "PROMOC" y no por igualdad exacta.
+function esBodegaPromocion(bodega){ return _normTxt(bodega).includes('PROMOC'); }
+
 // Rango 27-a-27. Si hoy>=27 → 27 del mes actual hasta hoy.
 // Si hoy<27 → 27 del mes anterior hasta hoy.
 function _rangoCorte27(){
@@ -9274,7 +9301,7 @@ function _itemEsPromocion(item, prodsCache){
   // Preferimos la bodega congelada al momento del pedido (item.bodegaAlMomento).
   // Si el pedido es antiguo y no la tiene, caemos al estado actual del producto.
   const bod = item.bodegaAlMomento || (prodsCache.find(x => x.id === item.pid)?.bodega) || '';
-  return _normTxt(bod) === _normTxt('PROMOCIÓNES');
+  return esBodegaPromocion(bod);
 }
 
 function _calcParesVendedor(userId, rango){
