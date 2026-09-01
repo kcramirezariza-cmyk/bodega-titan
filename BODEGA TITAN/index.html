@@ -1166,14 +1166,17 @@ textarea{resize:vertical}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="form-group"><label>Nombre *</label><input type="text" id="p-nombre" placeholder="Ej: Bota Vaquera Classic"></div>
+      <div class="form-group"><label>Tipo de producto *</label><select id="p-tipo"><option value="botas">👢 Botas</option><option value="accesorios">👜 Accesorios</option></select></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="form-group"><label>Categoría</label><input type="text" id="p-cat" placeholder="Botas, Zapatos..." list="cats-dl"><datalist id="cats-dl"></datalist></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="form-group"><label>Bodega</label><select id="p-bodega"><option value="BODEGA 1 🔵">BODEGA 1 🔵</option><option value="BODEGA 2 🟡">BODEGA 2 🟡</option><option value="PROMOCIÓNES 🔴">PROMOCIÓNES 🔴</option></select></div>
-      <div class="form-group"><label>Departamento</label><input type="text" id="p-depto" placeholder="Ej: Calzado Formal" list="deptos-dl"><datalist id="deptos-dl"></datalist></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label>Departamento</label><input type="text" id="p-depto" placeholder="Ej: Calzado Formal" list="deptos-dl"><datalist id="deptos-dl"></datalist></div>
       <div class="form-group"><label>Proveedor</label><input type="text" id="p-prov" placeholder="Nombre del proveedor" list="provs-dl"><datalist id="provs-dl"></datalist></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr;gap:12px">
       <div class="form-group"><label>Descripción</label><input type="text" id="p-desc" placeholder="Descripción breve"></div>
     </div>
     <div class="form-group">
@@ -2653,7 +2656,7 @@ function renderDashboard() {
   const prods=getProds(),movs=getMovs(),today=hoy();
   let totalStock=0,stockBotas=0,stockAcc=0,valCosto=0,valVenta=0,low=[];
   prods.forEach(p=>{
-    const esAcc=esCategoriaComboPermitida(p.categoria);
+    const esAcc=esProductoAccesorio(p);
     p.variantes.forEach(v=>{
       const s=v.stockActual||0; totalStock+=s; valCosto+=s*(v.precioCosto||0); valVenta+=s*(v.precio||0);
       if(esAcc) stockAcc+=s; else stockBotas+=s;
@@ -2976,7 +2979,7 @@ function renderProductos() {
     if(fb&&(p.bodega||'')!==fb) return false;
     if(fd&&(p.departamento||'')!==fd) return false;
     if(ft){
-      const esAcc=esCategoriaComboPermitida(p.categoria);
+      const esAcc=esProductoAccesorio(p);
       if(ft==='accesorios'&&!esAcc) return false;
       if(ft==='botas'&&esAcc) return false;
     }
@@ -3165,8 +3168,8 @@ function renderVariantPhotoThumb(rowId){
   }
 }
 
-function abrirModalProducto(){editingProdId=null;document.getElementById('mp-title').textContent='Nuevo Producto';['p-nombre','p-cat','p-depto','p-prov','p-desc'].forEach(id=>document.getElementById(id).value='');document.getElementById('p-bodega').value='BODEGA 1 🔵';currentProductPhoto=null;renderProductPhotoThumb();document.getElementById('var-container').innerHTML='';varCnt=0;addVarRow();abrirModal('modal-producto');}
-function editarProducto(id){const p=getProds().find(x=>x.id===id);if(!p)return;editingProdId=id;document.getElementById('mp-title').textContent='Editar Producto';document.getElementById('p-nombre').value=p.nombre;document.getElementById('p-cat').value=p.categoria||'';const selBod=document.getElementById('p-bodega');selBod.value=p.bodega||'BODEGA 1 🔵';if(selBod.selectedIndex<0)selBod.value=esBodegaPromocion(p.bodega)?'PROMOCIÓNES 🔴':'BODEGA 1 🔵';document.getElementById('p-depto').value=p.departamento||'';document.getElementById('p-prov').value=p.proveedor||'';document.getElementById('p-desc').value=p.descripcion||'';currentProductPhoto=p.foto||null;renderProductPhotoThumb();document.getElementById('var-container').innerHTML='';varCnt=0;p.variantes.forEach(v=>addVarRow(v));abrirModal('modal-producto');}
+function abrirModalProducto(){editingProdId=null;document.getElementById('mp-title').textContent='Nuevo Producto';['p-nombre','p-cat','p-depto','p-prov','p-desc'].forEach(id=>document.getElementById(id).value='');document.getElementById('p-bodega').value='BODEGA 1 🔵';document.getElementById('p-tipo').value='botas';currentProductPhoto=null;renderProductPhotoThumb();document.getElementById('var-container').innerHTML='';varCnt=0;addVarRow();abrirModal('modal-producto');}
+function editarProducto(id){const p=getProds().find(x=>x.id===id);if(!p)return;editingProdId=id;document.getElementById('mp-title').textContent='Editar Producto';document.getElementById('p-nombre').value=p.nombre;document.getElementById('p-tipo').value=p.tipo||(esCategoriaComboPermitida(p.categoria)?'accesorios':'botas');document.getElementById('p-cat').value=p.categoria||'';const selBod=document.getElementById('p-bodega');selBod.value=p.bodega||'BODEGA 1 🔵';if(selBod.selectedIndex<0)selBod.value=esBodegaPromocion(p.bodega)?'PROMOCIÓNES 🔴':'BODEGA 1 🔵';document.getElementById('p-depto').value=p.departamento||'';document.getElementById('p-prov').value=p.proveedor||'';document.getElementById('p-desc').value=p.descripcion||'';currentProductPhoto=p.foto||null;renderProductPhotoThumb();document.getElementById('var-container').innerHTML='';varCnt=0;p.variantes.forEach(v=>addVarRow(v));abrirModal('modal-producto');}
 
 function addVarRow(data={}) {
   const id='vr'+varCnt++,el=document.createElement('div');
@@ -3209,7 +3212,7 @@ function guardarProducto() {
       _stockTocado:stockTocado
     });
   });
-  const base={nombre,categoria:document.getElementById('p-cat').value.trim(),bodega:document.getElementById('p-bodega').value.trim(),departamento:document.getElementById('p-depto').value.trim(),proveedor:document.getElementById('p-prov').value.trim(),descripcion:document.getElementById('p-desc').value.trim(),foto:currentProductPhoto||''};
+  const base={nombre,tipo:document.getElementById('p-tipo').value,categoria:document.getElementById('p-cat').value.trim(),bodega:document.getElementById('p-bodega').value.trim(),departamento:document.getElementById('p-depto').value.trim(),proveedor:document.getElementById('p-prov').value.trim(),descripcion:document.getElementById('p-desc').value.trim(),foto:currentProductPhoto||''};
   if(editingProdId){
     guardarProductoEdicionAtomica(editingProdId, base, variantes);
     toast('Producto actualizado');
@@ -8588,6 +8591,12 @@ function abrirPickerProducto(){
 function esCategoriaComboPermitida(categoria){
   const c=(categoria||'').toLowerCase();
   return /billetera|bolso|cartera|monedero/.test(c);
+}
+// ¿El producto es accesorio? Usa el campo `tipo` guardado (botas/accesorios) y,
+// para productos viejos sin ese campo, cae a inferir por la categoría.
+function esProductoAccesorio(p){
+  if(p && p.tipo) return p.tipo==='accesorios';
+  return esCategoriaComboPermitida(p&&p.categoria);
 }
 function renderPickerProductos(){
   const q=(document.getElementById('picker-search')?.value||'').toLowerCase();
