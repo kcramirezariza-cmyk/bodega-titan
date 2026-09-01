@@ -3237,7 +3237,7 @@ function guardarProductoEdicionAtomica(pid, base, variantesForm){
   if(escrituraBloqueada()) return;
   const construir=(current)=>{
     const cur = current || {id:pid};
-    cur.nombre=base.nombre; cur.categoria=base.categoria; cur.bodega=base.bodega;
+    cur.nombre=base.nombre; cur.tipo=base.tipo; cur.categoria=base.categoria; cur.bodega=base.bodega;
     cur.departamento=base.departamento; cur.proveedor=base.proveedor;
     cur.descripcion=base.descripcion; cur.foto=base.foto;
     const serverVars = (current && current.variantes) ? current.variantes : [];
