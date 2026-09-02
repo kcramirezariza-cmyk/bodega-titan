@@ -523,6 +523,9 @@ textarea{resize:vertical}
           <select id="filter-prod-depto" onchange="renderProductos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
             <option value="">Todos los departamentos</option>
           </select>
+          <select id="filter-prod-talla" onchange="renderProductos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
+            <option value="">Todas las tallas</option>
+          </select>
           <button class="btn btn-outline" onclick="auditarInventario()" data-admin title="Busca entregas de proveedor marcadas como recibidas que no aparecen en el stock"><i class="bi bi-clipboard2-pulse"></i> Auditar stock</button>
           <button class="btn btn-primary" onclick="abrirModalProducto()" data-admin><i class="bi bi-plus-lg"></i> Nuevo Producto</button>
         </div>
@@ -947,6 +950,7 @@ textarea{resize:vertical}
           <select id="filter-mes-mis-pedidos" onchange="renderMisPedidos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
             <option value="">Todos los meses</option>
           </select>
+          <button class="btn btn-outline" onclick="rastrearTodasLasGuias(false)" title="Rastrea de una sola vez las guías de tus pedidos activos"><i class="bi bi-arrow-repeat"></i> Rastrear mis guías</button>
         </div>
       </div>
       <div id="mis-pedidos-content"></div>
@@ -1076,6 +1080,7 @@ textarea{resize:vertical}
             <button class="btn-icon" onclick="document.getElementById('guias-buscar-header').value='';_guiasBusqueda='';if(document.getElementById('guias-tabla'))renderGuiasTabla();else renderGuias();" title="Limpiar búsqueda" style="padding:2px 4px"><i class="bi bi-x-lg" style="font-size:11px"></i></button>
           </div>
           <button class="btn btn-outline" onclick="abrirModalCiudades()"><i class="bi bi-geo-alt-fill"></i> Ciudades</button>
+          <button class="btn btn-outline" onclick="rastrearTodasLasGuias(false)" title="Rastrea de una sola vez todas las guías activas (omite entregadas y devueltas)"><i class="bi bi-arrow-repeat"></i> Rastrear todas</button>
           <button class="btn btn-primary" onclick="abrirModalGuia()"><i class="bi bi-plus-lg"></i> Registrar Guía</button>
         </div>
       </div>
@@ -2217,6 +2222,22 @@ function removeProd(id) {
   if (USE_FIREBASE) fbCommit(REF.prods.child(id).remove(), ()=>{ localProds=prevProds; }, 'la eliminación del producto');
   else lsSet('prods',localProds);
 }
+// Oculta/muestra un producto a las vendedoras. Cuando oculto=true, las vendedoras
+// no lo ven en el catálogo ni pueden pedirlo; el admin sí lo sigue viendo (marcado
+// "OCULTO"). Escribe SOLO el campo `oculto` para no pisar cambios de stock en curso.
+function toggleVisibilidadProducto(id){
+  if(escrituraBloqueada()) return;
+  const p=getProds().find(x=>x.id===id); if(!p) return;
+  const nuevo=!p.oculto;
+  p.oculto=nuevo;                 // optimista
+  refreshPage(); updateBadges();
+  if(USE_FIREBASE){
+    fbCommit(REF.prods.child(id).update({oculto:nuevo}), ()=>{ p.oculto=!nuevo; refreshPage(); }, 'la visibilidad del producto');
+  } else { lsSet('prods',localProds); }
+  toast(nuevo?'🚫 Producto ocultado — las vendedoras ya no lo verán ni podrán pedirlo':'✅ Producto visible — las vendedoras ya pueden pedirlo nuevamente', 4000);
+}
+// Productos que una vendedora puede ver/pedir (excluye los ocultos). El admin ve todos.
+function getProdsVisibles(){ return isAdmin() ? getProds() : getProds().filter(p=>!p.oculto); }
 function writeMovement(mov) {
   if(escrituraBloqueada()) return;
   localMovs.push(mov);
@@ -2957,7 +2978,8 @@ function renderDashBodegaChart(){
 //  PRODUCTOS
 // ════════════════════════════════════════
 function renderProductos() {
-  const prods=getProds(),q=(document.getElementById('search-prod')?.value||'').toLowerCase();
+  // Las vendedoras no ven los productos ocultos; el admin ve todos (marcados).
+  const prods=getProdsVisibles(),q=(document.getElementById('search-prod')?.value||'').toLowerCase();
   const cats=[...new Set(prods.map(p=>p.categoria).filter(Boolean))];
   const pvs=[...new Set(prods.map(p=>p.proveedor).filter(Boolean))];
   const bods=[...new Set(prods.map(p=>p.bodega).filter(Boolean))];
@@ -2973,11 +2995,18 @@ function renderProductos() {
   if(fpb){const cur=fpb.value;fpb.innerHTML='<option value="">Todas las bodegas</option>'+bodsFiltro.map(b=>`<option value="${b}"${b===cur?' selected':''}>${b}</option>`).join('');}
   const fpd=document.getElementById('filter-prod-depto');
   if(fpd){const cur=fpd.value;fpd.innerHTML='<option value="">Todos los departamentos</option>'+dpts.map(d=>`<option value="${d}"${d===cur?' selected':''}>${d}</option>`).join('');}
+  // Filtro por TALLA: unión de todas las variantes, orden numérico cuando aplica.
+  const tallas=[...new Set(prods.flatMap(p=>(p.variantes||[]).map(v=>String(v.talla||'').trim()).filter(Boolean)))]
+    .sort((a,b)=>{const na=parseFloat(a),nb=parseFloat(b);if(!isNaN(na)&&!isNaN(nb))return na-nb;return a.localeCompare(b,'es');});
+  const fptEl=document.getElementById('filter-prod-talla');
+  if(fptEl){const cur=fptEl.value;fptEl.innerHTML='<option value="">Todas las tallas</option>'+tallas.map(t=>`<option value="${t}"${t===cur?' selected':''}>Talla ${t}</option>`).join('');}
   const ft=document.getElementById('filter-prod-tipo')?.value||'';
+  const ftalla=fptEl?.value||'';
   const fb=fpb?.value||'', fd=fpd?.value||'';
   let filtered=prods.filter(p=>{
     if(fb&&(p.bodega||'')!==fb) return false;
     if(fd&&(p.departamento||'')!==fd) return false;
+    if(ftalla && !(p.variantes||[]).some(v=>String(v.talla||'').trim()===ftalla)) return false;
     if(ft){
       const esAcc=esProductoAccesorio(p);
       if(ft==='accesorios'&&!esAcc) return false;
@@ -3061,7 +3090,7 @@ function renderProductos() {
       : (_esAdmin
           ? `<div class="photo-cell photo-quick"><div class="no-photo upload-now" onclick="subirFotoProductoQuick('${p.id}')" title="Subir foto"><i class="bi bi-camera-fill"></i><span>Subir</span></div></div>`
           : `<div class="photo-cell photo-quick"><div class="no-photo"><i class="bi bi-image" style="color:#cbd5e1"></i></div></div>`);
-    html+=`<tr><td>${fotoCell}</td><td><div style="font-weight:600">${p.nombre}</div>${p.bodega||p.departamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${[p.bodega,p.departamento].filter(Boolean).join(' · ')}</div>`:''} ${p.descripcion?`<div style="font-size:11px;color:var(--muted)">${p.descripcion}</div>`:''}</td>
+    html+=`<tr${p.oculto?' style="opacity:.55"':''}><td>${fotoCell}</td><td><div style="font-weight:600">${p.nombre}${p.oculto?' <span class="badge badge-danger" style="font-size:9px;vertical-align:middle"><i class="bi bi-eye-slash-fill"></i> OCULTO</span>':''}</div>${p.bodega||p.departamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${[p.bodega,p.departamento].filter(Boolean).join(' · ')}</div>`:''} ${p.descripcion?`<div style="font-size:11px;color:var(--muted)">${p.descripcion}</div>`:''}</td>
       ${_esAdmin?`<td>${p.categoria?`<span class="badge badge-purple">${p.categoria}</span>`:'—'}</td>
       <td><div style="font-size:11px;color:var(--muted);margin-bottom:4px">${p.variantes.length} var.</div><div style="display:flex;gap:3px;flex-wrap:wrap">${bars}</div></td>`:''}
       <td><strong>${fmtN(ts)}</strong> <span style="font-size:11px;color:var(--muted)">uds</span></td>
@@ -3070,7 +3099,8 @@ function renderProductos() {
       <td>${badge}</td>`:''}
       <td><div style="display:flex;gap:3px">
         <button class="btn-icon" onclick="verVariantes('${p.id}')" title="Ver variantes"><i class="bi bi-eye-fill"></i></button>
-        ${_esAdmin?`<button class="btn-icon" onclick="editarProducto('${p.id}')" title="Editar"><i class="bi bi-pencil-fill"></i></button>
+        ${_esAdmin?`<button class="btn-icon" onclick="toggleVisibilidadProducto('${p.id}')" title="${p.oculto?'OCULTO a vendedoras — clic para mostrar':'Visible a vendedoras — clic para ocultar'}"><i class="bi ${p.oculto?'bi-eye-slash-fill':'bi-eye'}" style="color:${p.oculto?'var(--danger)':'var(--muted)'}"></i></button>
+        <button class="btn-icon" onclick="editarProducto('${p.id}')" title="Editar"><i class="bi bi-pencil-fill"></i></button>
         <button class="btn-icon" style="color:var(--danger)" onclick="pedirEliminarProd('${p.id}')" title="Eliminar"><i class="bi bi-trash-fill"></i></button>`:''}
       </div></td></tr>`;
   });
@@ -4479,17 +4509,20 @@ function calcReportData(days){const prods=getProds(),movs=getMovs();
   const period=movs.filter(m=>m.fecha>=desde&&m.fecha<=hasta);const totalEnt=period.filter(esIngresoBodega).reduce((s,m)=>s+m.cantidad,0);const totalSal=period.filter(m=>m.tipo==='salida').reduce((s,m)=>s+m.cantidad,0);const valorVentas=period.filter(m=>m.tipo==='salida').reduce((sum,m)=>{const p=prods.find(x=>x.id===m.productoId),v=p?.variantes.find(x=>x.id===m.varianteId);return sum+m.cantidad*(v?.precio||0);},0);// Agrupar por PRODUCTO (sumar todas las variantes)
 const smap={};
 period.filter(m=>m.tipo==='salida').forEach(m=>{smap[m.productoId]=(smap[m.productoId]||0)+m.cantidad;});
-const top5=Object.entries(smap).map(([pid,qty])=>{
+const topProductos=Object.entries(smap).map(([pid,qty])=>{
   const p=prods.find(x=>x.id===pid);
   const totalVal=period.filter(m=>m.tipo==='salida'&&m.productoId===pid).reduce((s,m)=>{
     const v=p?.variantes.find(x=>x.id===m.varianteId);return s+m.cantidad*(v?.precio||0);
   },0);
   return{nombre:p?.nombre||'N/A',departamento:p?.departamento||'',bodega:p?.bodega||'',qty,total:totalVal};
-}).sort((a,b)=>b.qty-a.qty).slice(0,5);
-return{period,totalEnt,totalSal,neto:totalEnt-totalSal,valorVentas,top5,prods};}
+}).sort((a,b)=>b.qty-a.qty);
+const top5=topProductos.slice(0,5);
+return{period,totalEnt,totalSal,neto:totalEnt-totalSal,valorVentas,top5,topProductos,prods};}
 
+let _verTopCompleto=false;
+function toggleVerTopCompleto(){ _verTopCompleto=!_verTopCompleto; renderReportes(); }
 function renderReportes(){
-  const{period,totalEnt,totalSal,neto,valorVentas,top5,prods}=calcReportData(reportPeriod);
+  const{period,totalEnt,totalSal,neto,valorVentas,top5,topProductos,prods}=calcReportData(reportPeriod);
   const{desde,hasta}=getReportRango();
   const periodoLabel=reportPeriod>0?`últimos ${reportPeriod} días`:`${fmtD(desde)} → ${fmtD(hasta)}`;
 
@@ -4517,10 +4550,14 @@ function renderReportes(){
     html+=`</div>`;
   }
 
-  // ── Top 5 tabla ──
-  html+=`<div class="card mb-20"><div class="card-title mb-16">Top 5 Más Vendidos — ${periodoLabel}</div>`;
-  if(!top5.length)html+=`<div class="empty"><div class="empty-icon"><i class="bi bi-box-seam" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin ventas en el período</h3></div>`;
-  else{html+=`<table><thead><tr><th>#</th><th>Producto</th><th>Departamento</th><th>Bodega</th><th>Uds. Vendidas</th><th>Total Venta</th></tr></thead><tbody>`;top5.forEach((item,i)=>{const rc=i===0?'gold':i===1?'silver':i===2?'bronze':'';html+=`<tr><td><span class="top5-rank ${rc}">${i+1}</span></td><td><strong>${item.nombre}</strong></td><td style="font-size:12px;color:var(--muted)">${item.departamento||'—'}</td><td style="font-size:12px;color:var(--muted)">${item.bodega||'—'}</td><td><strong>${fmtN(item.qty)}</strong> uds</td><td>${fmtM(item.total)}</td></tr>`;});html+=`</tbody></table>`;}
+  // ── Top productos tabla (Top 5 o listado completo) ──
+  const lista = _verTopCompleto ? topProductos : top5;
+  const tituloTop = _verTopCompleto ? `Listado completo de más vendidos (${topProductos.length}) — ${periodoLabel}` : `Top 5 Más Vendidos — ${periodoLabel}`;
+  html+=`<div class="card mb-20"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px"><div class="card-title" style="margin:0">${tituloTop}</div>`;
+  if(topProductos.length>5) html+=`<button class="btn btn-outline btn-sm" onclick="toggleVerTopCompleto()"><i class="bi ${_verTopCompleto?'bi-chevron-up':'bi-list-ol'}"></i> ${_verTopCompleto?'Ver solo Top 5':'Ver listado completo ('+topProductos.length+')'}</button>`;
+  html+=`</div>`;
+  if(!lista.length)html+=`<div class="empty"><div class="empty-icon"><i class="bi bi-box-seam" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin ventas en el período</h3></div>`;
+  else{html+=`<div class="table-wrap"><table><thead><tr><th>#</th><th>Producto</th><th>Departamento</th><th>Bodega</th><th>Uds. Vendidas</th><th>Total Venta</th></tr></thead><tbody>`;lista.forEach((item,i)=>{const rc=i===0?'gold':i===1?'silver':i===2?'bronze':'';html+=`<tr><td><span class="top5-rank ${rc}">${i+1}</span></td><td><strong>${item.nombre}</strong></td><td style="font-size:12px;color:var(--muted)">${item.departamento||'—'}</td><td style="font-size:12px;color:var(--muted)">${item.bodega||'—'}</td><td><strong>${fmtN(item.qty)}</strong> uds</td><td>${fmtM(item.total)}</td></tr>`;});html+=`</tbody></table></div>`;}
   html+=`</div><div class="card"><div class="card-title mb-16">Movimientos del período</div>`;
 if(!period.length)html+=`<div class="empty"><div class="empty-icon"><i class="bi bi-clock-history" style="font-size:38px;color:var(--muted)"></i></div><h3>Sin movimientos</h3></div>`;
 else{html+=`<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Variante</th><th>Cantidad</th><th>Referencia</th><th>Usuario</th></tr></thead><tbody>`;[...period].sort((a,b)=>{if(b.fecha!==a.fecha)return b.fecha.localeCompare(a.fecha);const na=prods.find(x=>x.id===a.productoId)?.nombre||'';const nb=prods.find(x=>x.id===b.productoId)?.nombre||'';return na.localeCompare(nb,'es');}).forEach(m=>{const p=prods.find(x=>x.id===m.productoId),v=p?.variantes.find(x=>x.id===m.varianteId);html+=`<tr><td style="white-space:nowrap">${fmtD(m.fecha)}</td><td>${m.tipo==='entrada'?'<span class="badge badge-success">⬇ Entrada</span>':'<span class="badge badge-danger">⬆ Salida</span>'}</td><td>${p?.nombre||'—'}</td><td>${v?v.talla+'/'+v.color:'—'}</td><td><strong>${m.tipo==='entrada'?'+':'-'}${m.cantidad}</strong></td><td style="font-size:12px;color:var(--muted)">${m.referencia||'—'}</td><td style="font-size:12px;color:var(--muted)">${m.usuario||'—'}</td></tr>`;});html+=`</tbody></table></div>`;}
@@ -5213,7 +5250,8 @@ async function verificarGuiaCambio(){
   if(st) st.innerHTML='<span style="color:var(--muted)"><i class="bi bi-arrow-repeat"></i> Rastreando la guía…</span>';
   try{
     const r=await trackClientSide(num);
-    const estado=(r?.estadoActual||'').toLowerCase();
+    // El texto real manda: solo "ENTREGAMOS TU ENVÍO" cuenta como entregada.
+    const estado=clasificarEstadoInterrapidisimo(r?.eventos?.[0]?.estado) || (r?.estadoActual||'').toLowerCase();
     const ciudad=String(r?.ciudadDestino||'').toUpperCase();
     const llegoACucuta = /CUCUTA|CÚCUTA/.test(ciudad);
     if(estado==='entregada' && llegoACucuta){
@@ -6597,23 +6635,63 @@ function esTextoDevolucion(txt){
   return _TEXTOS_DEVOLUCION.some(p=>t.includes(p));
 }
 
-// Corrige la clasificación del rastreo cuando el texto indica devolución.
-// Se aplica al GUARDAR la guía para que filtros, contadores y badges queden
-// coherentes en todo el sistema, sin tener que parchear cada pantalla.
+// ── CLASIFICADOR AUTORITATIVO POR TEXTO REAL DE INTERRAPIDÍSIMO ───────────
+// El cliente es la fuente de verdad. La Cloud Function marcaba "entregada"
+// textos que NO son entrega ("En reparto", "En bodega de destino", "Esperando
+// tu acción", "1a/2a/última entrega fallida"...). Aquí mapeamos el TEXTO real
+// que reporta Interrapidísimo a un estado confiable. Vocabulario observado:
+//   ENTREGAMOS TU ENVÍO → entregada (única entrega real)
+//   Devuelto al remitente → devuelta
+//   Recoge en oficina → en_oficina
+//   En bodega de destino / Viajando al destino / En reparto → en_transito
+//   Esperando tu acción / Nª entrega fallida → novedad
+//   Por Iniciar / (vacío) → registrada ; Envío anulado → anulado
+// Devuelve uno de: 'entregada'|'devuelta'|'novedad'|'en_oficina'|'en_transito'|
+//   'registrada'|'anulado', o null si el texto no se reconoce (se cae al servidor).
+function clasificarEstadoInterrapidisimo(estadoTexto){
+  const t=String(estadoTexto||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().trim();
+  if(!t) return null;
+  // Devolución primero: "entregado/devuelto al remitente" NO es entrega al cliente.
+  if(/DEVUELT|DEVOLUC|REMITENTE|REEXPEDI|RETORN|REINTEGR/.test(t)) return 'devuelta';
+  if(/ANULAD|CANCELAD/.test(t)) return 'anulado';
+  // Entrega real al destinatario (estricto).
+  if(/ENTREGAMOS TU ENVIO|ENTREGADO AL DESTINAT|ENTREGA EXITOSA|ENVIO ENTREGADO|ENTREGA COMPLET/.test(t)) return 'entregada';
+  // Novedades: entrega fallida o espera acción del cliente.
+  if(/FALLID|NOVEDAD|ESPERANDO TU ACCION|DIRECCION ERRAD|NO CONTACT|RECHAZ|CERRAD|NO RECLAMAD/.test(t)) return 'novedad';
+  // Disponible para reclamar en oficina de destino.
+  if(/RECOGE EN OFICINA|EN OFICINA|DISPONIBLE PARA RECLAMAR|PARA RECLAMAR|RECLAMAR EN OFICINA/.test(t)) return 'en_oficina';
+  // Aún en movimiento (bodega destino, reparto, viajando, tránsito...).
+  if(/EN REPARTO|EN RUTA|EN BODEGA|VIAJANDO|EN TRANSITO|EN CAMINO|CENTRO DE DISTRIB|HACIA|TRANSPORTAND|ZONAL|DESPACHAD/.test(t)) return 'en_transito';
+  // Registro inicial.
+  if(/POR INICIAR|ADMITID|ADMISION|REGISTRAD|GENERAD|CREAD/.test(t)) return 'registrada';
+  return null;
+}
+
+// Corrige/clasifica el estado que se GUARDA en la guía. El texto real manda
+// sobre la clasificación del servidor. Se aplica al rastrear, así los filtros,
+// contadores y badges quedan coherentes en un solo punto.
 function normalizarEstadoGuia(estadoActual, estadoTexto){
+  const c=clasificarEstadoInterrapidisimo(estadoTexto);
+  if(c==='anulado') return 'anulado';
+  if(c) return c;
   if(esTextoDevolucion(estadoTexto)) return 'devuelta';
   return estadoActual;
 }
 
-// Estado normalizado de la guía para la UI (aplica la heurística anterior).
+// Estado normalizado de la guía para la UI. Prioriza SIEMPRE el texto real de la
+// transportadora; solo si el texto no se reconoce cae a la clasificación guardada.
 // Devuelve: 'entregada' | 'novedad' | 'devuelta' | 'en_oficina' | 'en_transito' | 'registrada'
 function estadoGuiaUI(guia){
+  // 1) Fuente de verdad: el texto real reportado por Interrapidísimo.
+  const porTexto=clasificarEstadoInterrapidisimo(guia&&guia.estadoTexto);
+  if(porTexto) return porTexto==='anulado' ? 'registrada' : porTexto;
+  // 2) Fallback (texto desconocido o ausente): clasificación guardada.
   const ea=guia&&guia.estadoActual||'registrada';
-  // Red de seguridad para guías ya guardadas antes de esta corrección.
   if(esTextoDevolucion(guia&&guia.estadoTexto)) return 'devuelta';
   if(ea==='entregada') return 'entregada';
   if(ea==='novedad')   return 'novedad';
   if(ea==='devuelta')  return 'devuelta';
+  if(ea==='en_oficina') return 'en_oficina';
   if(ea==='en_bodega') return guiaEnOficinaDestino(guia)?'en_oficina':'en_transito';
   if(ea==='en_transito') return 'en_transito';
   return 'registrada';
@@ -8210,7 +8288,7 @@ async function rastrearGuia(guiaId){
 
   document.getElementById('rastreo-num-sub').textContent = 'Guia '+guia.numero+' - '+(guia.transportadora||'interrapidisimo');
   const webLink = document.getElementById('rastreo-web-link');
-  if(webLink) webLink.href = 'https://siguetuenvio.interrapidisimo.com/' + guia.numero;
+  if(webLink){ webLink.style.display=''; webLink.href = 'https://siguetuenvio.interrapidisimo.com/' + guia.numero; }
 
   document.getElementById('rastreo-content').innerHTML =
     '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:16px">'+
@@ -8222,57 +8300,8 @@ async function rastrearGuia(guiaId){
   try {
     const result = await trackClientSide(guia.numero);
     mostrarResultadoRastreo(result);
-    if(result && result.estadoActual){
-      const ped = getPedidos().find(p => p.id === guia.pedidoId);
-      // Actualizar historial: agregar evento solo si el estado cambió
-      const histActual = Array.isArray(guia.historial) ? guia.historial : [];
-      const ultimo = histActual[histActual.length-1];
-      const nuevoEvento = result.eventos[0];
-      const histFinal = (!ultimo || ultimo.estado !== nuevoEvento.estado)
-        ? [...histActual, nuevoEvento].slice(-20)
-        : histActual;
-      // Persistimos siempre — escritura unificada que también sirve sin Firebase
-      const guiaActualizada = {
-        ...guia,
-        // Corregido por texto: si la transportadora dice "devolución" pero
-        // clasificó "entregada", se guarda como devuelta. Así los filtros,
-        // contadores y badges de Guías quedan coherentes en un solo punto.
-        estadoActual:         normalizarEstadoGuia(result.estadoActual, result.eventos[0]?.estado || ''),
-        estadoTexto:          result.eventos[0]?.estado || '',
-        historial:            histFinal,
-        ultimoRastreo:        Date.now(),
-        fechaEstimadaEntrega: result.fechaEstimadaEntrega || null,
-        ciudadDestino:        result.ciudadDestino || '',
-      };
-      writeGuia(guiaActualizada);
-      if(ped){
-        // Sincronizar ped.estado con el estado real de la guía
-        const estadoTextoActual = result.eventos[0]?.estado || '';
-        const estadoGuiaNorm = normalizarEstadoGuia(result.estadoActual, estadoTextoActual);
-        const nuevoEstadoPed =
-          estadoGuiaNorm==='devuelta'  ? 'en_devolucion' :
-          estadoGuiaNorm==='entregada' ? 'entregado' :
-          estadoGuiaNorm==='novedad'   ? 'novedad'   : 'enviado';
-        // Si el admin ya marcó la devolución como ingresada a la oficina, el
-        // rastreo no debe reabrirla ni moverle el estado.
-        const yaCerrada = ped.estado==='en_devolucion' && ped.devolucionIngresada;
-        if(ped.estado !== nuevoEstadoPed && !yaCerrada){
-          const pedSync={...ped, estado:nuevoEstadoPed, tsEstado:Date.now(), notaEstado:estadoTextoActual};
-          // NO se toca el stock al detectar la devolución. El par todavía viene
-          // en camino de vuelta: sumarlo aquí inventaría unidades que no están
-          // físicamente en la bodega. Entra cuando alguien lo recibe y marca la
-          // casilla "ya ingresó a nuestra oficina" en el modal de estado.
-          if(nuevoEstadoPed==='en_devolucion'){
-            pedSync.devolucionIngresada = false;
-            toast('Guía en devolución. El pedido quedó "En devolución" — ingresa las unidades al inventario cuando el par llegue físicamente a la oficina.', 8000);
-          }
-          writePedido(pedSync);
-        }
-      }
-      // Refresco inmediato de la vista actual (Firebase también lo hará, pero
-      // si la app está offline el usuario ve el cambio igual).
-      refreshPage();
-    }
+    _aplicarResultadoRastreo(guia, result, {silent:false});
+    refreshPage();
   } catch(e) {
     console.error('Error rastreando guia:', e);
     document.getElementById('rastreo-content').innerHTML =
@@ -8282,6 +8311,116 @@ async function rastrearGuia(guiaId){
       '<div style="font-size:12px;color:var(--muted)">Usa "Ver historial" — el numero ya esta copiado.</div>'+
       '</div>';
   }
+}
+
+// Aplica el resultado de un rastreo a la guía y sincroniza el estado del pedido.
+// Reutilizado por el rastreo individual y por el rastreo masivo. Devuelve el
+// estado de UI resultante (o null si no hubo datos). Con {silent:true} no lanza
+// toasts (para no saturar la pantalla en el rastreo masivo).
+function _aplicarResultadoRastreo(guia, result, opts){
+  const silent = opts && opts.silent;
+  if(!(result && result.estadoActual)) return null;
+  const ped = getPedidos().find(p => p.id === guia.pedidoId);
+  const histActual = Array.isArray(guia.historial) ? guia.historial : [];
+  const ultimo = histActual[histActual.length-1];
+  const nuevoEvento = result.eventos[0];
+  const estadoTextoActual = result.eventos[0]?.estado || '';
+  const histFinal = (!ultimo || ultimo.estado !== nuevoEvento.estado)
+    ? [...histActual, nuevoEvento].slice(-20)
+    : histActual;
+  const estadoGuiaNorm = normalizarEstadoGuia(result.estadoActual, estadoTextoActual);
+  const guiaActualizada = {
+    ...guia,
+    estadoActual:         estadoGuiaNorm,
+    estadoTexto:          estadoTextoActual,
+    historial:            histFinal,
+    ultimoRastreo:        Date.now(),
+    fechaEstimadaEntrega: result.fechaEstimadaEntrega || null,
+    ciudadDestino:        result.ciudadDestino || '',
+  };
+  writeGuia(guiaActualizada);
+  if(ped){
+    const nuevoEstadoPed =
+      estadoGuiaNorm==='devuelta'  ? 'en_devolucion' :
+      estadoGuiaNorm==='entregada' ? 'entregado' :
+      estadoGuiaNorm==='novedad'   ? 'novedad'   : 'enviado';
+    const yaCerrada = ped.estado==='en_devolucion' && ped.devolucionIngresada;
+    if(ped.estado !== nuevoEstadoPed && !yaCerrada){
+      const pedSync={...ped, estado:nuevoEstadoPed, tsEstado:Date.now(), notaEstado:estadoTextoActual};
+      if(nuevoEstadoPed==='en_devolucion'){
+        pedSync.devolucionIngresada = false;
+        if(!silent) toast('Guía en devolución. El pedido quedó "En devolución" — ingresa las unidades al inventario cuando el par llegue físicamente a la oficina.', 8000);
+      }
+      writePedido(pedSync);
+    }
+  }
+  return estadoGuiaNorm;
+}
+
+// ── RASTREO MASIVO ────────────────────────────────────────────────────────
+// Rastrea muchas guías de una sola vez (con concurrencia limitada) en vez de
+// una por una. El admin rastrea TODAS las guías activas; la vendedora rastrea
+// solo las de SUS pedidos. Las guías ya finalizadas (entregada/devuelta/anulada)
+// se omiten para no gastar tiempo — se puede forzar incluirlas.
+let _rastreoMasivoEnCurso=false;
+function _guiasParaRastreoMasivo(incluirFinalizadas){
+  let guias=getGuias().filter(g=>g && g.numero);
+  // Vendedora: solo las guías de sus propios pedidos.
+  if(!isAdmin()){
+    const misIds=new Set(getPedidos().filter(p=>esMiPedido(p)).map(p=>p.id));
+    guias=guias.filter(g=>misIds.has(g.pedidoId));
+  }
+  if(!incluirFinalizadas){
+    guias=guias.filter(g=>{
+      const eu=estadoGuiaUI(g);
+      return eu!=='entregada' && eu!=='devuelta';
+    });
+  }
+  return guias;
+}
+async function rastrearTodasLasGuias(incluirFinalizadas){
+  if(_rastreoMasivoEnCurso){ toast('Ya hay un rastreo masivo en curso…'); return; }
+  const guias=_guiasParaRastreoMasivo(!!incluirFinalizadas);
+  if(!guias.length){ toast('No hay guías activas por rastrear.'); return; }
+  _rastreoMasivoEnCurso=true;
+  document.getElementById('rastreo-num-sub').textContent='Rastreo masivo';
+  const webLink=document.getElementById('rastreo-web-link'); if(webLink) webLink.style.display='none';
+  abrirModal('modal-rastreo');
+  const cont=document.getElementById('rastreo-content');
+  let hechas=0, ok=0, fallidas=0;
+  const total=guias.length;
+  const pintar=()=>{ cont.innerHTML=
+    '<div style="padding:22px;display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center">'+
+    '<i class="bi bi-truck-front-fill" style="font-size:40px;color:var(--primary)"></i>'+
+    '<div style="font-size:15px;font-weight:700">Rastreando '+total+' guía(s)…</div>'+
+    '<div style="width:100%;max-width:320px;background:var(--bg);border-radius:20px;overflow:hidden;height:14px;border:1px solid var(--border)"><div style="height:100%;width:'+Math.round(hechas/total*100)+'%;background:var(--primary);transition:width .2s"></div></div>'+
+    '<div style="font-size:13px;color:var(--muted)">'+hechas+' / '+total+' · <span style="color:var(--success)">'+ok+' ok</span>'+(fallidas?' · <span style="color:var(--danger)">'+fallidas+' sin respuesta</span>':'')+'</div>'+
+    '<div style="font-size:11px;color:var(--muted)">No cierres esta ventana hasta terminar.</div>'+
+    '</div>'; };
+  pintar();
+  // Concurrencia limitada: procesamos en tandas para no saturar la Cloud Function.
+  const CONC=4;
+  let idx=0;
+  async function worker(){
+    while(idx<guias.length){
+      const g=guias[idx++];
+      try{
+        const result=await trackClientSide(g.numero);
+        _aplicarResultadoRastreo(g, result, {silent:true});
+        ok++;
+      }catch(e){ fallidas++; }
+      hechas++; pintar();
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(CONC,guias.length)}, worker));
+  _rastreoMasivoEnCurso=false;
+  cont.innerHTML=
+    '<div style="padding:24px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center">'+
+    '<i class="bi bi-check2-circle" style="font-size:46px;color:var(--success)"></i>'+
+    '<div style="font-size:16px;font-weight:700">Rastreo masivo completado</div>'+
+    '<div style="font-size:13px;color:var(--muted)">'+ok+' actualizada(s)'+(fallidas?' · '+fallidas+' sin respuesta (reintenta luego)':'')+'</div>'+
+    '</div>';
+  refreshPage();
 }
 
 // Rastreo vía Cloud Function (evita CORS desde file://)
@@ -8546,9 +8685,10 @@ function mostrarResultadoRastreo(data){
     return;
   }
   const ev = data.eventos[0];
-  const estadoActual = data.estadoActual || 'en_transito';
-  const colorMap = { entregada:'var(--success)', novedad:'var(--warning)', en_bodega:'var(--primary)', en_transito:'var(--muted)' };
-  const iconMap  = { entregada:'bi-check-circle-fill', novedad:'bi-exclamation-triangle-fill', en_bodega:'bi-building', en_transito:'bi-truck' };
+  // El texto real manda para el ícono/color (no la clasificación del servidor).
+  const estadoActual = clasificarEstadoInterrapidisimo(ev.estado) || data.estadoActual || 'en_transito';
+  const colorMap = { entregada:'var(--success)', novedad:'var(--warning)', devuelta:'var(--danger)', en_oficina:'var(--primary)', en_bodega:'var(--primary)', en_transito:'var(--muted)', registrada:'var(--muted)' };
+  const iconMap  = { entregada:'bi-check-circle-fill', novedad:'bi-exclamation-triangle-fill', devuelta:'bi-arrow-return-left', en_oficina:'bi-building', en_bodega:'bi-building', en_transito:'bi-truck', registrada:'bi-hourglass-split' };
   const color = colorMap[estadoActual] || colorMap.en_transito;
   const icon  = iconMap[estadoActual]  || iconMap.en_transito;
   const ahora = new Date(ev.ts||Date.now());
@@ -8601,7 +8741,8 @@ function esProductoAccesorio(p){
 function renderPickerProductos(){
   const q=(document.getElementById('picker-search')?.value||'').toLowerCase();
   const cat=document.getElementById('picker-cat')?.value||'';
-  let prods=getProds();
+  // Solo productos visibles: los marcados "oculto" no aparecen para vendedoras.
+  let prods=getProdsVisibles();
   // En combo/trío/cuarteto se permiten TODOS los productos (botas, billeteras,
   // bolsos, etc.) — el picker ya no restringe a accesorios.
   const soloAccesorios = false;
