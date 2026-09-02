@@ -1706,6 +1706,7 @@ const REF = firebaseInitOk ? {
   alertas : db.ref('titanbotas/alertas'),
   compras : db.ref('titanbotas/compras'),
   version : db.ref('titanbotas/config/appVersion'),
+  autoRastreo : db.ref('titanbotas/config/lastAutoRastreoTs'),
 } : {};
 
 // ── Local data cache (filled by real-time listeners or localStorage) ──
@@ -2382,6 +2383,8 @@ function showApp() {
   startAutoSync();
   // Iniciar control de sesiones simultáneas
   startSessionControl();
+  // Rastreo masivo automático cada 4 h (solo admin dispara; coordinado por Firebase)
+  iniciarRastreoAutomatico();
 }
 
 // Auto-sincronización de inventario cada 10 segundos
@@ -8378,18 +8381,18 @@ function _guiasParaRastreoMasivo(incluirFinalizadas){
   }
   return guias;
 }
-async function rastrearTodasLasGuias(incluirFinalizadas){
-  if(_rastreoMasivoEnCurso){ toast('Ya hay un rastreo masivo en curso…'); return; }
+// opts.silent = true → corre en segundo plano (sin modal ni barra de progreso),
+// usado por el rastreo automático cada 4 h. El botón manual lo llama sin silent.
+async function rastrearTodasLasGuias(incluirFinalizadas, opts){
+  const silent = opts && opts.silent;
+  if(_rastreoMasivoEnCurso){ if(!silent) toast('Ya hay un rastreo masivo en curso…'); return; }
   const guias=_guiasParaRastreoMasivo(!!incluirFinalizadas);
-  if(!guias.length){ toast('No hay guías activas por rastrear.'); return; }
+  if(!guias.length){ if(!silent) toast('No hay guías activas por rastrear.'); return; }
   _rastreoMasivoEnCurso=true;
-  document.getElementById('rastreo-num-sub').textContent='Rastreo masivo';
-  const webLink=document.getElementById('rastreo-web-link'); if(webLink) webLink.style.display='none';
-  abrirModal('modal-rastreo');
-  const cont=document.getElementById('rastreo-content');
   let hechas=0, ok=0, fallidas=0;
   const total=guias.length;
-  const pintar=()=>{ cont.innerHTML=
+  let cont=null;
+  const pintar=()=>{ if(silent||!cont) return; cont.innerHTML=
     '<div style="padding:22px;display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center">'+
     '<i class="bi bi-truck-front-fill" style="font-size:40px;color:var(--primary)"></i>'+
     '<div style="font-size:15px;font-weight:700">Rastreando '+total+' guía(s)…</div>'+
@@ -8397,7 +8400,13 @@ async function rastrearTodasLasGuias(incluirFinalizadas){
     '<div style="font-size:13px;color:var(--muted)">'+hechas+' / '+total+' · <span style="color:var(--success)">'+ok+' ok</span>'+(fallidas?' · <span style="color:var(--danger)">'+fallidas+' sin respuesta</span>':'')+'</div>'+
     '<div style="font-size:11px;color:var(--muted)">No cierres esta ventana hasta terminar.</div>'+
     '</div>'; };
-  pintar();
+  if(!silent){
+    document.getElementById('rastreo-num-sub').textContent='Rastreo masivo';
+    const webLink=document.getElementById('rastreo-web-link'); if(webLink) webLink.style.display='none';
+    abrirModal('modal-rastreo');
+    cont=document.getElementById('rastreo-content');
+    pintar();
+  }
   // Concurrencia limitada: procesamos en tandas para no saturar la Cloud Function.
   const CONC=4;
   let idx=0;
@@ -8414,13 +8423,55 @@ async function rastrearTodasLasGuias(incluirFinalizadas){
   }
   await Promise.all(Array.from({length:Math.min(CONC,guias.length)}, worker));
   _rastreoMasivoEnCurso=false;
-  cont.innerHTML=
-    '<div style="padding:24px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center">'+
-    '<i class="bi bi-check2-circle" style="font-size:46px;color:var(--success)"></i>'+
-    '<div style="font-size:16px;font-weight:700">Rastreo masivo completado</div>'+
-    '<div style="font-size:13px;color:var(--muted)">'+ok+' actualizada(s)'+(fallidas?' · '+fallidas+' sin respuesta (reintenta luego)':'')+'</div>'+
-    '</div>';
+  if(!silent){
+    cont.innerHTML=
+      '<div style="padding:24px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center">'+
+      '<i class="bi bi-check2-circle" style="font-size:46px;color:var(--success)"></i>'+
+      '<div style="font-size:16px;font-weight:700">Rastreo masivo completado</div>'+
+      '<div style="font-size:13px;color:var(--muted)">'+ok+' actualizada(s)'+(fallidas?' · '+fallidas+' sin respuesta (reintenta luego)':'')+'</div>'+
+      '</div>';
+  } else if(ok>0){
+    toast('🔄 Rastreo automático: '+ok+' guía(s) actualizada(s).', 4000);
+  }
   refreshPage();
+  return {ok, fallidas, total};
+}
+
+// ── RASTREO AUTOMÁTICO CADA 4 HORAS ───────────────────────────────────────
+// Corre en segundo plano SIN abrir el modal. Se coordina por Firebase
+// (config/lastAutoRastreoTs) con una transacción: solo la PRIMERA pestaña de
+// admin que encuentre el temporizador vencido "gana" el turno y ejecuta el
+// rastreo; las demás pestañas/dispositivos no lo repiten en esa ventana. Si no
+// hay ninguna pestaña de admin abierta, simplemente se corre cuando alguna lo
+// esté (el botón manual siempre funciona igual).
+const _AUTO_RASTREO_MS = 4*60*60*1000;     // 4 horas
+const _AUTO_RASTREO_CHECK_MS = 20*60*1000; // revisar cada 20 min si ya toca
+async function _chequearRastreoAutomatico(){
+  try{
+    if(!USE_FIREBASE || !REF.autoRastreo) return;
+    if(!isAdmin()) return;                 // solo admin dispara el rastreo global
+    if(_rastreoMasivoEnCurso) return;
+    if(escrituraBloqueada && escrituraBloqueada()) return;
+    const ahora = Date.now();
+    // Transacción: reclama el turno solo si el último rastreo fue hace ≥4 h.
+    const res = await REF.autoRastreo.transaction(prev=>{
+      if(prev && (ahora - prev) < _AUTO_RASTREO_MS) return; // aún no toca → aborta
+      return ahora;                        // reclama el turno
+    });
+    if(res && res.committed && res.snapshot && res.snapshot.val()===ahora){
+      // Ganamos el turno: rastreo silencioso de todas las guías activas.
+      await rastrearTodasLasGuias(false, {silent:true});
+    }
+  }catch(e){ console.warn('[auto-rastreo] no se pudo ejecutar:', e); }
+}
+// Arranca el temporizador una sola vez. Primer chequeo a los 90 s del arranque
+// (deja que carguen guías/usuario), luego cada 20 min.
+let _autoRastreoIniciado=false;
+function iniciarRastreoAutomatico(){
+  if(_autoRastreoIniciado) return;
+  _autoRastreoIniciado=true;
+  setTimeout(_chequearRastreoAutomatico, 90*1000);
+  setInterval(_chequearRastreoAutomatico, _AUTO_RASTREO_CHECK_MS);
 }
 
 // Rastreo vía Cloud Function (evita CORS desde file://)
