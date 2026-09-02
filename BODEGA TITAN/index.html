@@ -4522,7 +4522,7 @@ const topProductos=Object.entries(smap).map(([pid,qty])=>{
 const top5=topProductos.slice(0,5);
 return{period,totalEnt,totalSal,neto:totalEnt-totalSal,valorVentas,top5,topProductos,prods};}
 
-let _verTopCompleto=false;
+let _verTopCompleto=true; // por defecto se muestra el listado COMPLETO de más vendidos
 function toggleVerTopCompleto(){ _verTopCompleto=!_verTopCompleto; renderReportes(); }
 function renderReportes(){
   const{period,totalEnt,totalSal,neto,valorVentas,top5,topProductos,prods}=calcReportData(reportPeriod);
