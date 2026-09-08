@@ -526,6 +526,7 @@ textarea{resize:vertical}
           <select id="filter-prod-talla" onchange="renderProductos()" style="width:auto;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
             <option value="">Todas las tallas</option>
           </select>
+          <button class="btn btn-outline" onclick="abrirCuadreInventario()" data-admin title="Ingresa el conteo físico real; ajusta el stock y lo deja registrado"><i class="bi bi-clipboard2-check-fill" style="color:var(--primary)"></i> Cuadre de inventario</button>
           <button class="btn btn-outline" onclick="auditarInventario()" data-admin title="Busca entregas de proveedor marcadas como recibidas que no aparecen en el stock"><i class="bi bi-clipboard2-pulse"></i> Auditar stock</button>
           <button class="btn btn-primary" onclick="abrirModalProducto()" data-admin><i class="bi bi-plus-lg"></i> Nuevo Producto</button>
         </div>
@@ -1213,6 +1214,26 @@ textarea{resize:vertical}
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="cerrarModal('modal-producto')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarProducto()">Guardar Producto</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CUADRE DE INVENTARIO -->
+<div class="modal-overlay" id="modal-cuadre">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div><div class="modal-title"><i class="bi bi-clipboard2-check-fill" style="color:var(--primary)"></i> Cuadre de inventario</div><div class="modal-sub">Escribe el conteo físico real de cada variante. Solo se ajustan las que cambies y queda registrado.</div></div>
+      <button class="btn-icon" onclick="cerrarModal('modal-cuadre')">✕</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      <div class="search-wrap" style="flex:1;min-width:200px"><i class="bi bi-search"></i><input type="text" id="cuadre-buscar" placeholder="Filtra por producto, talla o color..." oninput="renderCuadreLista()"></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer"><input type="checkbox" id="cuadre-solo-cambios" onchange="renderCuadreLista()"> Ver solo las que cambié</label>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px" id="cuadre-resumen"></div>
+    <div class="table-wrap" id="cuadre-lista" style="max-height:52vh;overflow:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="cerrarModal('modal-cuadre')">Cancelar</button>
+      <button class="btn btn-primary" id="cuadre-guardar-btn" onclick="guardarCuadreInventario()"><i class="bi bi-check2-circle"></i> Aplicar cuadre</button>
     </div>
   </div>
 </div>
@@ -3268,6 +3289,10 @@ function guardarProducto() {
 //       - Variante nueva → se usa el stock escrito por el admin.
 function guardarProductoEdicionAtomica(pid, base, variantesForm){
   if(escrituraBloqueada()) return;
+  // Auditoría de stock: capturamos antes/después de cada variante para dejar un
+  // movimiento "ajuste" cuando el admin cambia el conteo a mano (así el
+  // inventario queda reconciliable: todo cambio de stock deja rastro).
+  const _ajusteAudit={};
   const construir=(current)=>{
     const cur = current || {id:pid};
     cur.nombre=base.nombre; cur.tipo=base.tipo; cur.categoria=base.categoria; cur.bodega=base.bodega;
@@ -3294,6 +3319,7 @@ function guardarProductoEdicionAtomica(pid, base, variantesForm){
       if(!srv) stockFinal = vf.stockActual;              // variante nueva
       else if(vf._stockTocado) stockFinal = vf.stockActual; // el admin lo corrigió → manda
       else stockFinal = (srv.stockActual||0);            // no lo tocó → preservar servidor
+      _ajusteAudit[vf.id]={ before: srv?(srv.stockActual||0):0, after: stockFinal||0, tocado: !!vf._stockTocado, nueva: !srv, talla:vf.talla||'', color:vf.color||'' };
       return {
         id:vf.id, talla:vf.talla, color:vf.color, sku:vf.sku,
         stockActual:stockFinal, stockMinimo:vf.stockMinimo,
@@ -3305,6 +3331,7 @@ function guardarProductoEdicionAtomica(pid, base, variantesForm){
   if(!USE_FIREBASE){
     const original=getProds().find(p=>p.id===pid);
     writeProd(construir(original?JSON.parse(JSON.stringify(original)):null));
+    _registrarAjustesInventario(pid,_ajusteAudit);
     return;
   }
   REF.prods.child(pid).transaction(construir, (error, committed, snapshot)=>{
@@ -3319,7 +3346,120 @@ function guardarProductoEdicionAtomica(pid, base, variantesForm){
       if(i>=0) localProds[i]=prodFinal; else localProds.push(prodFinal);
       refreshPage(); updateBadges();
     }
+    // Deja rastro de auditoría de los cambios manuales de stock.
+    _registrarAjustesInventario(pid,_ajusteAudit);
   });
+}
+// Registra un movimiento "ajuste" por cada variante cuyo stock cambió por edición
+// manual (conteo físico), para que el inventario sea reconcilable y auditable.
+function _registrarAjustesInventario(pid, audit){
+  Object.keys(audit||{}).forEach(vid=>{
+    const a=audit[vid]; if(!a) return;
+    if(!a.tocado && !a.nueva) return;         // solo si el admin tocó el número o es variante nueva
+    const delta=(a.after||0)-(a.before||0);
+    if(delta===0) return;
+    writeMovement({
+      id:uid(),
+      tipo: delta>0?'entrada':'salida',
+      subtipo:'ajuste',
+      fecha:hoy(),
+      productoId:pid, varianteId:vid,
+      cantidad:Math.abs(delta),
+      referencia:'Ajuste manual de inventario',
+      notas:`Conteo físico: ${a.before} → ${a.after} (T${a.talla}/${a.color})`,
+      usuario:(typeof CU!=='undefined'&&CU)?CU.nombre:'', ts:Date.now()
+    });
+  });
+}
+
+// ── CUADRE DE INVENTARIO ──────────────────────────────────────────────────
+// Pantalla de conteo físico masivo: el admin escribe las unidades reales y el
+// sistema ajusta el stock SOLO de las variantes que cambió, dejando un
+// movimiento "ajuste" por cada una (inventario reconciliable).
+let _cuadreConteos={};   // vid -> valor escrito (string)
+let _cuadreVarIndex={};  // vid -> {pid, stock, nombre, talla, color}
+function abrirCuadreInventario(){
+  _cuadreConteos={};
+  const b=document.getElementById('cuadre-buscar'); if(b) b.value='';
+  const sc=document.getElementById('cuadre-solo-cambios'); if(sc) sc.checked=false;
+  renderCuadreLista();
+  abrirModal('modal-cuadre');
+}
+function _cuadreNum(v){ const n=parseInt(v); return isNaN(n)?null:Math.max(0,n); }
+function onCuadreInput(vid,val){
+  _cuadreConteos[vid]=val;
+  const info=_cuadreVarIndex[vid];
+  const cell=document.getElementById('cuadre-diff-'+vid);
+  if(cell&&info){
+    const n=_cuadreNum(val);
+    if(val===''||n===null||n===info.stock){ cell.innerHTML=''; }
+    else { const d=n-info.stock; cell.innerHTML=`<span class="badge ${d>0?'badge-success':'badge-danger'}">${d>0?'+':''}${d}</span>`; }
+  }
+  actualizarResumenCuadre();
+}
+function actualizarResumenCuadre(){
+  let n=0; Object.keys(_cuadreConteos).forEach(vid=>{ const info=_cuadreVarIndex[vid]; const val=_cuadreConteos[vid]; const num=_cuadreNum(val); if(info&&val!==''&&num!==null&&num!==info.stock) n++; });
+  const el=document.getElementById('cuadre-resumen');
+  if(el) el.innerHTML = n?`<strong style="color:var(--primary)">${n}</strong> variante(s) con cambios listas para aplicar.`:'Aún no has cambiado ningún conteo.';
+}
+function renderCuadreLista(){
+  const prods=getProds();
+  const q=(document.getElementById('cuadre-buscar')?.value||'').toLowerCase().trim();
+  const soloCambios=document.getElementById('cuadre-solo-cambios')?.checked;
+  // Índice completo (para poder aplicar aunque estén filtradas)
+  _cuadreVarIndex={};
+  prods.forEach(p=>(p.variantes||[]).forEach(v=>{ if(v&&v.id) _cuadreVarIndex[v.id]={pid:p.id,stock:v.stockActual||0,nombre:p.nombre,talla:v.talla||'',color:v.color||''}; }));
+  let filas='';
+  prods.forEach(p=>(p.variantes||[]).forEach(v=>{
+    if(!v||!v.id) return;
+    const hay=`${p.nombre} ${v.talla||''} ${v.color||''}`.toLowerCase();
+    if(q && !hay.includes(q)) return;
+    const entered=_cuadreConteos[v.id];
+    const n=_cuadreNum(entered);
+    const cambiada = entered!==undefined && entered!=='' && n!==null && n!==(v.stockActual||0);
+    if(soloCambios && !cambiada) return;
+    const diff = cambiada ? `<span class="badge ${n-(v.stockActual||0)>0?'badge-success':'badge-danger'}">${n-(v.stockActual||0)>0?'+':''}${n-(v.stockActual||0)}</span>` : '';
+    filas+=`<tr><td style="font-size:12px"><strong>${p.nombre}</strong></td><td style="font-size:12px;color:var(--muted)">T${v.talla||'—'}/${v.color||'—'}</td><td style="text-align:center"><strong>${v.stockActual||0}</strong></td><td><input type="number" min="0" value="${entered!==undefined?entered:''}" placeholder="${v.stockActual||0}" oninput="onCuadreInput('${v.id}',this.value)" style="width:78px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:13px"></td><td id="cuadre-diff-${v.id}">${diff}</td></tr>`;
+  }));
+  const cont=document.getElementById('cuadre-lista');
+  if(cont) cont.innerHTML = filas
+    ? `<table><thead><tr><th>Producto</th><th>Variante</th><th style="text-align:center">Stock actual</th><th>Conteo físico</th><th>Ajuste</th></tr></thead><tbody>${filas}</tbody></table>`
+    : '<div class="empty" style="padding:24px"><div class="empty-icon"><i class="bi bi-search"></i></div><h3>Sin variantes que coincidan</h3></div>';
+  actualizarResumenCuadre();
+}
+function _cuadreAplicarProducto(pid, cambios){
+  return new Promise(res=>{
+    const audit={};
+    const asArr=vs=>Array.isArray(vs)?vs:(vs&&typeof vs==='object'?Object.values(vs):[]);
+    const construir=(cur)=>{
+      if(!cur) return cur;
+      asArr(cur.variantes).forEach(v=>{ if(v&&v.id&&Object.prototype.hasOwnProperty.call(cambios,v.id)){ const before=v.stockActual||0; const after=Math.max(0,parseInt(cambios[v.id])||0); audit[v.id]={before,after,tocado:true,nueva:false,talla:v.talla||'',color:v.color||''}; v.stockActual=after; } });
+      return cur;
+    };
+    if(!USE_FIREBASE){ const o=getProds().find(p=>p.id===pid); if(o){ const c=JSON.parse(JSON.stringify(o)); writeProd(construir(c)); } _registrarAjustesInventario(pid,audit); res(Object.keys(audit).length); return; }
+    REF.prods.child(pid).transaction(construir,(err,committed,snap)=>{
+      if(!err && committed && snap){ const pf=snap.val(); if(pf){ const i=localProds.findIndex(p=>p.id===pid); if(i>=0) localProds[i]=pf; else localProds.push(pf); } _registrarAjustesInventario(pid,audit); res(Object.keys(audit).length); }
+      else res(0);
+    });
+  });
+}
+async function guardarCuadreInventario(){
+  if(escrituraBloqueada&&escrituraBloqueada()) return;
+  const porPid={};
+  Object.keys(_cuadreConteos).forEach(vid=>{
+    const val=_cuadreConteos[vid]; const num=_cuadreNum(val); const info=_cuadreVarIndex[vid];
+    if(!info||val===''||num===null||num===info.stock) return;
+    (porPid[info.pid]=porPid[info.pid]||{})[vid]=num;
+  });
+  const pids=Object.keys(porPid);
+  if(!pids.length){ toast('No cambiaste ningún conteo.'); return; }
+  const btn=document.getElementById('cuadre-guardar-btn'); if(btn){btn.disabled=true;btn.innerHTML='<i class="bi bi-hourglass-split"></i> Aplicando…';}
+  let total=0;
+  for(const pid of pids){ total+=await _cuadreAplicarProducto(pid, porPid[pid]); }
+  if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-check2-circle"></i> Aplicar cuadre';}
+  toast('✅ Cuadre aplicado: '+total+' variante(s) ajustada(s) y registrada(s) en el historial.',6000);
+  cerrarModal('modal-cuadre');
+  refreshPage(); updateBadges();
 }
 
 function verVariantes(id) {
