@@ -9019,6 +9019,49 @@ const CO_DEPTS={
 "Vichada":["Puerto Carreño","Cumaribo","La Primavera","Santa Rosalía"]
 };
 
+// ── DESTINOS AGREGADOS (2026-09-08): municipios con cobertura Interrapidísimo
+// que faltaban en la base (cruce contra el listado oficial DANE de municipios).
+// Se inyectan en _IRS_CODIGOS (código para el Excel/cobertura) y en CO_DEPTS
+// (seleccionables al crear pedido). Se excluyeron las áreas no municipalizadas
+// (selva sin cobertura terrestre) y municipios remotos por río/aire.
+const _IRS_NUEVOS=[
+{c:"Belmira",d:"Antioquia",cod:"05086000"},{c:"Ciudad Bolívar",d:"Antioquia",cod:"05101000"},{c:"Don Matias",d:"Antioquia",cod:"05237000"},{c:"Entrerríos",d:"Antioquia",cod:"05264000"},{c:"La Unión",d:"Antioquia",cod:"05400000"},{c:"Santa Bárbara",d:"Antioquia",cod:"05679000"},{c:"Santa Fe de Antioquia",d:"Antioquia",cod:"05042000"},{c:"Sopetrán",d:"Antioquia",cod:"05761000"},{c:"Toledo",d:"Antioquia",cod:"05819000"},{c:"San Antonio de Prado",d:"Antioquia",cod:"05001000"},
+{c:"Providencia",d:"San Andrés y Providencia",cod:"88564000"},{c:"San Andrés",d:"San Andrés y Providencia",cod:"88001000"},
+{c:"Tubará",d:"Atlántico",cod:"08832000"},
+{c:"Cartagena",d:"Bolívar",cod:"13001000"},{c:"San Estanislao",d:"Bolívar",cod:"13647000"},{c:"San Pablo",d:"Bolívar",cod:"13670000"},{c:"Santa Rosa",d:"Bolívar",cod:"13683000"},{c:"Tiquisio",d:"Bolívar",cod:"13810000"},
+{c:"Belén",d:"Boyacá",cod:"15087000"},{c:"Cuítiva",d:"Boyacá",cod:"15226000"},{c:"Güicán De La Sierra",d:"Boyacá",cod:"15332000"},{c:"Motavita",d:"Boyacá",cod:"15476000"},{c:"Santana",d:"Boyacá",cod:"15686000"},{c:"Tununguá",d:"Boyacá",cod:"15832000"},
+{c:"San José",d:"Caldas",cod:"17665000"},
+{c:"López De Micay",d:"Cauca",cod:"19418000"},{c:"Morales",d:"Cauca",cod:"19473000"},{c:"Páez",d:"Cauca",cod:"19517000"},{c:"Puracé",d:"Cauca",cod:"19585000"},{c:"Santa Rosa",d:"Cauca",cod:"19701000"},{c:"Sotará - Paispamba",d:"Cauca",cod:"19760000"},
+{c:"La Paz",d:"Cesar",cod:"20621000"},
+{c:"Atrato",d:"Chocó",cod:"27050000"},{c:"El Cantón Del San Pablo",d:"Chocó",cod:"27135000"},{c:"Quibdó",d:"Chocó",cod:"27001000"},{c:"Unión Panamericana",d:"Chocó",cod:"27810000"},
+{c:"Pueblo Nuevo",d:"Córdoba",cod:"23570000"},{c:"Purísima De La Concepción",d:"Córdoba",cod:"23586000"},{c:"Tierralta",d:"Córdoba",cod:"23807000"},
+{c:"Chía",d:"Cundinamarca",cod:"25175000"},{c:"La Palma",d:"Cundinamarca",cod:"25394000"},{c:"San Cayetano",d:"Cundinamarca",cod:"25653000"},{c:"San Francisco",d:"Cundinamarca",cod:"25658000"},{c:"Venecia",d:"Cundinamarca",cod:"25506000"},
+{c:"Isnos",d:"Huila",cod:"41359000"},
+{c:"Ariguaní",d:"Magdalena",cod:"47058000"},{c:"Chivolo",d:"Magdalena",cod:"47170000"},{c:"Nueva Granada",d:"Magdalena",cod:"47460000"},{c:"Pijiño Del Carmen",d:"Magdalena",cod:"47545000"},{c:"Sabanas De San Ángel",d:"Magdalena",cod:"47660000"},{c:"Zapayán",d:"Magdalena",cod:"47960000"},{c:"Zona Bananera",d:"Magdalena",cod:"47980000"},
+{c:"Albán",d:"Nariño",cod:"52019000"},{c:"Arboleda",d:"Nariño",cod:"52051000"},{c:"Chachagüí",d:"Nariño",cod:"52240000"},{c:"Cuaspud Carlosama",d:"Nariño",cod:"52224000"},{c:"El Rosario",d:"Nariño",cod:"52256000"},{c:"Guaitarilla",d:"Nariño",cod:"52320000"},{c:"Gualmatán",d:"Nariño",cod:"52323000"},{c:"Los Andes",d:"Nariño",cod:"52418000"},{c:"Mallama",d:"Nariño",cod:"52435000"},{c:"Puerres",d:"Nariño",cod:"52573000"},{c:"Ricaurte",d:"Nariño",cod:"52612000"},{c:"Tumaco",d:"Nariño",cod:"52835000"},{c:"San Bernardo",d:"Nariño",cod:"52685000"},{c:"San Pablo",d:"Nariño",cod:"52693000"},{c:"Santacruz",d:"Nariño",cod:"52699000"},
+{c:"Salazar",d:"Norte de Santander",cod:"54660000"},{c:"Sardinata",d:"Norte de Santander",cod:"54720000"},
+{c:"San Miguel",d:"Putumayo",cod:"86757000"},{c:"Valle Del Guamuez",d:"Putumayo",cod:"86865000"},
+{c:"Capitanejo",d:"Santander",cod:"68147000"},{c:"Girón",d:"Santander",cod:"68307000"},{c:"Jordán",d:"Santander",cod:"68370000"},
+{c:"Buenavista",d:"Sucre",cod:"70110000"},{c:"Colosó",d:"Sucre",cod:"70204000"},{c:"Palmito",d:"Sucre",cod:"70523000"},{c:"San Juan De Betulia",d:"Sucre",cod:"70702000"},{c:"San Luis De Sincé",d:"Sucre",cod:"70742000"},
+{c:"Armero",d:"Tolima",cod:"73055000"},{c:"Espinal",d:"Tolima",cod:"73268000"},{c:"Mariquita",d:"Tolima",cod:"73443000"},
+{c:"Calima",d:"Valle del Cauca",cod:"76126000"},{c:"Buga",d:"Valle del Cauca",cod:"76111000"},{c:"San Pedro",d:"Valle del Cauca",cod:"76670000"},{c:"Cali",d:"Valle del Cauca",cod:"76001000"}
+];
+(function(){
+  try{
+    if(typeof _IRS_CODIGOS!=='object'||typeof CO_DEPTS!=='object') return;
+    _IRS_NUEVOS.forEach(function(m){
+      var key=normIRS(m.c)+'/'+normIRS(m.d);
+      _IRS_CODIGOS[key]=m.cod;  // código DANE oficial (corrige si estaba mal)
+      if(Array.isArray(CO_DEPTS[m.d])){
+        if(!CO_DEPTS[m.d].some(function(x){return normIRS(x)===normIRS(m.c);})){
+          CO_DEPTS[m.d].push(m.c);
+          CO_DEPTS[m.d].sort(function(a,b){return String(a).localeCompare(String(b),'es');});
+        }
+      }
+    });
+  }catch(e){ console.warn('[_IRS_NUEVOS] no se pudo inyectar:', e); }
+})();
+
 let _ciudadesBloqueadas={}; // { "ciudad_dpto": true }
 const REF_CONFIG_CIUDADES = ()=> USE_FIREBASE ? REF.prods?.root?.child('titanbotas/config/ciudadesBloqueadas') : null;
 
