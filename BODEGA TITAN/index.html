@@ -543,8 +543,8 @@ textarea{resize:vertical}
           <div id="in-stock-g" style="display:none;margin-bottom:14px"><div id="in-stock-d" style="padding:9px 13px;background:var(--bg);border-radius:8px;font-size:13px"></div></div>
           <div class="form-group"><label>Tipo de entrada</label>
             <select id="in-subtipo" style="font-size:13px">
+              <option value="devolucion" selected>Devolución de cliente</option>
               <option value="compra">Compra de mercancía</option>
-              <option value="devolucion">Devolución de cliente</option>
             </select>
           </div>
           <div class="form-group"><label>Cantidad</label><input type="number" id="in-qty" min="1" value="1"></div>
@@ -3941,34 +3941,51 @@ function confirmarEntregaItemCompra(compraId, idx){
     // ── Liberación de BACKORDERS por prioridad (quien pidió primero) ──────
     // Las unidades que acaban de entrar cubren, en orden de llegada del pedido,
     // los pares que se vendieron sin stock físico de esta misma variante.
-    const cubiertos=liberarBackordersPorEntrega(it.pid, it.vid, qty);
-    if(cubiertos>0){
-      // Esas unidades se van a los clientes que estaban "por reponer": SALEN del
-      // stock. Como el stock nunca quedó negativo, aquí se descuenta lo cubierto.
-      ajustarStockAtomico(it.pid, it.vid, -cubiertos, function(ok2){
-        if(ok2){
-          writeMovement({id:uid(),tipo:'salida',subtipo:'backorder',fecha:hoy(),productoId:it.pid,varianteId:it.vid,cantidad:cubiertos,referencia:`Reposición backorder — ${c.proveedor}`,notas:'Entrega a pedidos que estaban por reponer',usuario:CU?.nombre||'',ts:Date.now()});
-        } else {
-          console.warn('[BACKORDER] No se pudo descontar el stock cubierto por reposición (revisar):', it.pid, it.vid, cubiertos);
-        }
-      });
-      toast(`+${qty} recibidas: ${it.productoNombre} T${it.talla}/${it.color}. Se cubrieron ${cubiertos} par(es) que estaban por reponer.`, 6000);
-    } else {
-      toast(`+${qty} unidades recibidas: ${it.productoNombre} T${it.talla}/${it.color}`);
-    }
+    // SEGURO: el pedido solo se marca "resuelto" si el descuento del stock ya
+    // se confirmó. Si falla, el pedido queda "por reponer" y se reintenta solo
+    // en la próxima entrada (nunca queda stock fantasma).
+    liberarBackordersPorEntregaSeguro(it.pid, it.vid, qty, function(cubiertos){
+      if(cubiertos>0){
+        writeMovement({id:uid(),tipo:'salida',subtipo:'backorder',fecha:hoy(),productoId:it.pid,varianteId:it.vid,cantidad:cubiertos,referencia:`Reposición backorder — ${c.proveedor}`,notas:'Entrega a pedidos que estaban por reponer',usuario:CU?.nombre||'',ts:Date.now()});
+        toast(`+${qty} recibidas: ${it.productoNombre} T${it.talla}/${it.color}. Se cubrieron ${cubiertos} par(es) que estaban por reponer.`, 6000);
+      } else {
+        toast(`+${qty} unidades recibidas: ${it.productoNombre} T${it.talla}/${it.color}`);
+      }
+    });
     verFacturaCompra(compraId);
   });
 }
 
-// Cubre los pedidos en backorder (vendidos sin stock físico) de una variante,
-// dando PRIORIDAD al que pidió primero (menor ts). `qtyRecibida` son las
-// unidades que acaban de entrar. Devuelve cuántos pares de backorder se
-// cubrieron. Cuando todos los ítems de un pedido quedan cubiertos, se le quita
-// la marca de backorder para que deje de figurar como "por reponer".
-function liberarBackordersPorEntrega(pid, vid, qtyRecibida){
+// ══════════════════════════════════════════════════════════════════════════
+// LIBERACIÓN DE BACKORDERS — VERSIÓN SEGURA (2026-09-19)
+// ──────────────────────────────────────────────────────────────────────────
+// BUG HISTÓRICO CORREGIDO: antes esta función marcaba los pedidos "por
+// reponer" como resueltos y RECIÉN DESPUÉS, en una transacción totalmente
+// aparte, se intentaba descontar el stock correspondiente. Si esa segunda
+// transacción fallaba por CUALQUIER motivo (una venta simultánea de otra
+// vendedora agotando el stock recién ingresado, un corte de red, o la app
+// recargándose sola por una actualización mientras la operación estaba en
+// curso) el pedido ya había quedado marcado como "entregado" pero el stock
+// JAMÁS se descontó. Esas unidades quedaban flotando para siempre: el
+// sistema las mostraba como disponibles sin existir físicamente. Detectado
+// en producción: 351 unidades "fantasma" repartidas en 147 tallas.
+//
+// LA CORRECCIÓN: se invierte el orden y se separa en dos fases.
+//   Fase 1 (calcularCoberturaBackorder): SOLO LEE — arma el plan de qué
+//     pedidos/ítems se cubrirían con `qtyRecibida`, sin modificar nada.
+//   Fase 2 (aplicarCoberturaBackorder): se ejecuta SOLO si el descuento de
+//     stock (ajustarStockAtomico) ya se confirmó con éxito. Recién ahí se
+//     marcan los pedidos como resueltos.
+// Si el descuento falla, el plan simplemente NO se aplica: los pedidos
+// siguen "por reponer" (visibles, pendientes) y se reintentan solos en la
+// PRÓXIMA entrada de stock de esa talla. Nunca queda stock fantasma.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Fase 1 — solo lectura. Devuelve {cubiertosTotal, plan:[{pedido, cambios:[{item,cubre}]}]}.
+function calcularCoberturaBackorder(vid, qtyRecibida){
   let disponibles=qtyRecibida;
-  if(disponibles<=0) return 0;
-  // Pedidos con backorder pendiente de ESTA variante, del más antiguo al más nuevo.
+  const plan=[];
+  if(disponibles<=0) return {cubiertosTotal:0, plan};
   const enEspera=getPedidos()
     .filter(p=>p.backorderPendiente && Array.isArray(p.items) &&
       p.items.some(it=>it.vid===vid && it.backorder && (it.faltante||0)>0))
@@ -3976,28 +3993,56 @@ function liberarBackordersPorEntrega(pid, vid, qtyRecibida){
   let cubiertosTotal=0;
   for(const ped of enEspera){
     if(disponibles<=0) break;
-    let cambiado=false;
+    const cambios=[];
     for(const it of ped.items){
       if(disponibles<=0) break;
       if(it.vid!==vid || !it.backorder || (it.faltante||0)<=0) continue;
       const cubre=Math.min(it.faltante, disponibles);
-      it.faltante-=cubre;
       disponibles-=cubre;
       cubiertosTotal+=cubre;
-      cambiado=true;
-      if(it.faltante<=0){ it.faltante=0; it.backorder=false; }
+      cambios.push({item:it, cubre});
     }
-    if(cambiado){
-      // ¿Al pedido ya no le queda ningún ítem por reponer? → deja de ser backorder.
-      const siguePendiente=ped.items.some(x=>x.backorder && (x.faltante||0)>0);
-      ped.backorderPendiente=siguePendiente;
-      if(!siguePendiente){
-        registrarAlertaStock('Backorder cubierto', `Pedido #${ped.id.slice(-6)} de ${ped.vendedorNombre||''}: ya tiene stock físico completo`);
-      }
-      writePedido(ped);
-    }
+    if(cambios.length) plan.push({pedido:ped, cambios});
   }
-  return cubiertosTotal;
+  return {cubiertosTotal, plan};
+}
+
+// Fase 2 — se llama SOLO después de confirmar que el stock ya se descontó.
+// Aplica el plan calculado en la fase 1: marca cada ítem/pedido como resuelto.
+function aplicarCoberturaBackorder(plan){
+  plan.forEach(({pedido:ped, cambios})=>{
+    cambios.forEach(({item:it, cubre})=>{
+      it.faltante=Math.max(0,(it.faltante||0)-cubre);
+      if(it.faltante<=0){ it.faltante=0; it.backorder=false; }
+    });
+    const siguePendiente=ped.items.some(x=>x.backorder && (x.faltante||0)>0);
+    ped.backorderPendiente=siguePendiente;
+    if(!siguePendiente){
+      registrarAlertaStock('Backorder cubierto', `Pedido #${ped.id.slice(-6)} de ${ped.vendedorNombre||''}: ya tiene stock físico completo`);
+    }
+    writePedido(ped);
+  });
+}
+
+// Envoltorio que hace TODO el ciclo correctamente: calcula, descuenta el
+// stock de forma atómica y SOLO si eso confirma, aplica el plan. `onDone`
+// recibe (cubiertos) — 0 si no había nada que cubrir o si el descuento falló
+// (en ese caso los pedidos quedaron intactos, pendientes, para reintentar).
+function liberarBackordersPorEntregaSeguro(pid, vid, qtyRecibida, onDone){
+  const {cubiertosTotal, plan} = calcularCoberturaBackorder(vid, qtyRecibida);
+  if(cubiertosTotal<=0){ onDone(0); return; }
+  ajustarStockAtomico(pid, vid, -cubiertosTotal, function(ok){
+    if(!ok){
+      // No se pudo descontar (p.ej. una venta concurrente agotó el stock
+      // recién ingresado). NO tocamos los pedidos: siguen "por reponer" y se
+      // reintentan solos en la próxima entrada. Nunca queda stock fantasma.
+      console.warn('[BACKORDER] Cobertura pospuesta — no se pudo descontar el stock todavía:', pid, vid, cubiertosTotal);
+      onDone(0);
+      return;
+    }
+    aplicarCoberturaBackorder(plan);
+    onDone(cubiertosTotal);
+  });
 }
 
 // ════════════════════════════════════════
@@ -4386,7 +4431,7 @@ function regEntrada(){
   const pidEl=document.getElementById('in-prod');
   const pid=pidEl.dataset.prodId||pidEl.value,vid=document.getElementById('in-var').value;
   const qty=parseInt(document.getElementById('in-qty').value),ref=document.getElementById('in-ref').value.trim(),notes=document.getElementById('in-notes').value.trim();
-  const subtipo=document.getElementById('in-subtipo')?.value||'compra';
+  const subtipo=document.getElementById('in-subtipo')?.value||'devolucion';
   if(!pid){toast('Selecciona un producto');return;}
   if(!vid){toast('Selecciona una variante');return;}
   if(!qty||qty<1){toast('Cantidad inválida');return;}
@@ -4396,25 +4441,21 @@ function regEntrada(){
     if(!ok){ toast('No se pudo registrar la entrada: '+(err||'error desconocido')); return; }
     writeMovement({id:uid(),tipo:'entrada',subtipo,fecha:hoy(),productoId:pid,varianteId:vid,cantidad:qty,referencia:ref,notas:notes,usuario:CU?.nombre||'',ts:Date.now()});
     // ── Liberación de BACKORDERS por prioridad (pedido más antiguo primero) ──
-    // Un ingreso manual de stock también cubre los pares "por reponer" de esa
-    // talla/color, igual que una entrega de proveedor. Las unidades cubiertas se
-    // asignan al colaborador con el pedido más antiguo y salen del stock.
-    const cubiertos=liberarBackordersPorEntrega(pid, vid, qty);
-    if(cubiertos>0){
-      ajustarStockAtomico(pid, vid, -cubiertos, function(ok2){
-        if(ok2){
-          writeMovement({id:uid(),tipo:'salida',subtipo:'backorder',fecha:hoy(),productoId:pid,varianteId:vid,cantidad:cubiertos,referencia:'Reposición backorder (ingreso manual)',notas:'Entrega a pedidos que estaban por reponer',usuario:CU?.nombre||'',ts:Date.now()});
-        } else {
-          console.warn('[BACKORDER] No se pudo descontar el stock cubierto por ingreso manual:', pid, vid, cubiertos);
-        }
-      });
-      toast(`+${qty} unidades. Se cubrieron ${cubiertos} par(es) que estaban por reponer (asignados al pedido más antiguo).`, 6000);
-    } else {
-      toast(`${subtipo==='devolucion'?'Devolución':'Compra'}: +${qty} unidades`);
-    }
+    // Un ingreso manual de stock (compra O devolución de cliente) también cubre
+    // los pares "por reponer" de esa talla/color, igual que una entrega de
+    // proveedor. SEGURO: el pedido solo se marca "resuelto" si el descuento del
+    // stock ya se confirmó; si falla, queda "por reponer" y se reintenta solo.
+    liberarBackordersPorEntregaSeguro(pid, vid, qty, function(cubiertos){
+      if(cubiertos>0){
+        writeMovement({id:uid(),tipo:'salida',subtipo:'backorder',fecha:hoy(),productoId:pid,varianteId:vid,cantidad:cubiertos,referencia:'Reposición backorder (ingreso manual)',notas:'Entrega a pedidos que estaban por reponer',usuario:CU?.nombre||'',ts:Date.now()});
+        toast(`+${qty} unidades. Se cubrieron ${cubiertos} par(es) que estaban por reponer (asignados al pedido más antiguo).`, 6000);
+      } else {
+        toast(`${subtipo==='devolucion'?'Devolución':'Compra'}: +${qty} unidades`);
+      }
+    });
     ['in-prod','in-ref','in-notes'].forEach(x=>document.getElementById(x).value='');
     document.getElementById('in-qty').value='1';
-    if(document.getElementById('in-subtipo')) document.getElementById('in-subtipo').value='compra';
+    if(document.getElementById('in-subtipo')) document.getElementById('in-subtipo').value='devolucion';
     document.getElementById('in-var-g').style.display='none';
     document.getElementById('in-stock-g').style.display='none';
   });
