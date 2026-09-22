@@ -4903,15 +4903,15 @@ function renderAlertas(){
     (!searchQ || (a.cliente||'').toLowerCase().includes(searchQ) || (a.productoNombre||'').toLowerCase().includes(searchQ) || (a.vendedorNombre||'').toLowerCase().includes(searchQ))
   ).slice(0,40);
   const el=document.getElementById('alertas-content');
-  if(!sinStock.length&&!bajo.length&&!estancados.length&&!reposiciones.length){
-    el.innerHTML=`<div class="card" style="text-align:center;padding:52px"><div style="font-size:48px;margin-bottom:12px;color:var(--success)"><i class="bi bi-check-circle-fill"></i></div><h3 style="font-size:18px;font-weight:700">Todo en orden</h3><p class="text-muted" style="margin-top:6px">Sin alertas de stock ni modelos estancados</p></div>`;
-    return;
-  }
   const tblStock=(items,tipo)=>`<table><thead><tr><th>Producto</th><th>Proveedor</th><th>Variante</th><th>SKU</th><th>Mínimo</th><th>Stock</th><th>Acción</th></tr></thead><tbody>${items.map(({p,v})=>`<tr><td><strong>${p.nombre}</strong></td><td style="font-size:12px;color:var(--muted)">${p.proveedor||'—'}</td><td>${v.talla}/${v.color}</td><td style="font-family:monospace;font-size:11px">${v.sku||'—'}</td><td>${v.stockMinimo}</td><td>${tipo==='zero'?'<span class="badge badge-danger">0 uds</span>':`<span class="badge badge-warning">${v.stockActual} uds</span>`}</td><td><button class="btn btn-sm btn-success" onclick="navigate('entrada')">+ Ingresar</button></td></tr>`).join('')}</tbody></table>`;
-  let html='';
-  if(reposiciones.length){
-    html+=`<div style="margin-bottom:24px"><div class="section-title mb-16" style="color:var(--success)"><i class="bi bi-box-seam-fill"></i> Reposiciones recientes — quién se cubrió al llegar stock (${reposiciones.length})</div>
-      <div class="card" style="padding:0;max-height:340px;overflow-y:auto">${reposiciones.map(a=>`
+  // "Reposiciones recientes" SIEMPRE se muestra (con aviso vacío si aún no hay
+  // ninguna) — así no parece que la función no existe cuando todavía no se ha
+  // cubierto ningún backorder desde que se agregó este registro.
+  let html=`<div style="margin-bottom:24px"><div class="section-title mb-16" style="color:var(--success)"><i class="bi bi-box-seam-fill"></i> Reposiciones recientes — quién se cubrió al llegar stock${reposiciones.length?` (${reposiciones.length})`:''}</div>`;
+  if(!reposiciones.length){
+    html+=`<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:13px"><i class="bi bi-inbox" style="font-size:22px;display:block;margin-bottom:8px"></i>Todavía no se ha cubierto ningún pedido "por reponer" desde que se activó este registro.<br>La próxima vez que una entrada de stock cubra un pedido en espera, va a aparecer aquí.</div></div>`;
+  } else {
+    html+=`<div class="card" style="padding:0;max-height:340px;overflow-y:auto">${reposiciones.map(a=>`
         <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">
           <div style="width:32px;height:32px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="bi bi-person-fill" style="color:var(--primary);font-size:13px"></i></div>
           <div style="flex:1;min-width:0">
