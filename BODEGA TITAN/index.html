@@ -1610,6 +1610,7 @@ textarea{resize:vertical}
       <button class="btn-icon" onclick="cerrarModal('modal-backorder-cubierto')"><i class="bi bi-x-lg"></i></button>
     </div>
     <div id="bkc-content" style="max-height:50vh;overflow-y:auto"></div>
+    <div style="padding:10px 20px 0;font-size:11px;color:var(--muted)"><i class="bi bi-info-circle"></i> Esto queda guardado en <strong>Alertas de Stock → Reposiciones recientes</strong>, así que si cierras esta ventana lo puedes revisar cuando quieras.</div>
     <div class="modal-footer">
       <button class="btn btn-primary" onclick="cerrarModal('modal-backorder-cubierto')">Entendido</button>
     </div>
@@ -1749,6 +1750,7 @@ let localUsers   = [];
 let localPedidos = [];
 let localGuias   = [];
 let localCompras = [];
+let localAlertas = [];
 let fbReady      = false;
 // Firebase es la ÚNICA fuente de verdad del inventario. Antes esta variable
 // pasaba a false con el botón "usar sin internet" y la app escribía en el
@@ -2076,6 +2078,14 @@ function initListeners() {
     localCompras = val ? Object.values(val).sort((a,b)=>(b.ts||0)-(a.ts||0)) : [];
     if (fbReady) { showSync(); refreshPage(); updateBadges(); }
   }, onListenerError);
+
+  // Alertas de stock (backorders cubiertos, ventas sin stock, transacciones
+  // abortadas...): dato secundario, no participa en checkReady.
+  REF.alertas.on('value', snap => {
+    const val = snap.val();
+    localAlertas = val ? Object.values(val).sort((a,b)=>(b.ts||0)-(a.ts||0)) : [];
+    if (fbReady && currentPage==='alertas') renderAlertas();
+  }, onListenerError);
 }
 
 function onDataReady() {
@@ -2161,6 +2171,7 @@ const getUsers   = () => localUsers;
 const getPedidos = () => localPedidos;
 const getGuias   = () => localGuias;
 const getCompras = () => localCompras;
+const getAlertas = () => localAlertas;
 
 // ── Data writers (optimistic update: actualiza la UI inmediatamente, luego sincroniza Firebase) ──
 // Antes, si la escritura a Firebase fallaba (sin conexión, permisos, payload
@@ -2285,12 +2296,16 @@ function writeMovement(mov) {
 // (ej. una talla que siempre se queda corta, o un colaborador que necesita
 // que le enseñen a refrescar el inventario antes de vender). No forma parte
 // del flujo crítico: si falla, no debe impedir que el pedido se rechace igual.
-function registrarAlertaStock(motivo, detalle){
+// `extra` (opcional) agrega/sobrescribe campos — lo usa la cobertura de
+// backorder para guardar datos estructurados (pedidoId, cliente, vendedora,
+// cantidad...) y así poder mostrar una tarjeta rica en Alertas, no solo texto.
+function registrarAlertaStock(motivo, detalle, extra){
   try{
-    const alerta={
+    const alerta=Object.assign({
       id:uid(), tipo:'stock_insuficiente', motivo,
       detalle, usuario:CU?.nombre||'', ts:Date.now(), fecha:hoy()
-    };
+    }, extra||{});
+    localAlertas.unshift(alerta);
     if(USE_FIREBASE && REF.alertas) REF.alertas.child(alerta.id).set(alerta);
   }catch(e){ console.error('No se pudo registrar la alerta de stock:',e); }
 }
@@ -4030,19 +4045,37 @@ function aplicarCoberturaBackorder(plan){
   const detalle=[];
   plan.forEach(({pedido:ped, cambios})=>{
     const cantidadCubierta=cambios.reduce((s,c)=>s+c.cubre,0);
+    const primerItem = cambios[0] && cambios[0].item;
     cambios.forEach(({item:it, cubre})=>{
       it.faltante=Math.max(0,(it.faltante||0)-cubre);
       if(it.faltante<=0){ it.faltante=0; it.backorder=false; }
     });
     const siguePendiente=ped.items.some(x=>x.backorder && (x.faltante||0)>0);
     ped.backorderPendiente=siguePendiente;
-    if(!siguePendiente){
-      registrarAlertaStock('Backorder cubierto', `Pedido #${ped.id.slice(-6)} de ${ped.vendedorNombre||''}: ya tiene stock físico completo`);
-    }
+    const clienteNombre = (ped.cliente && ped.cliente.nombre) || 'Sin nombre';
+    // Alerta con datos ESTRUCTURADOS (no solo texto) — así "Alertas de Stock"
+    // puede mostrar una tarjeta con nombre del cliente, vendedora y un botón
+    // directo al pedido. Queda un registro permanente, no solo el aviso del
+    // momento de la entrada.
+    registrarAlertaStock(
+      siguePendiente ? 'Backorder parcialmente cubierto' : 'Backorder cubierto',
+      `${clienteNombre} (vend. ${ped.vendedorNombre||'—'}) — ${primerItem?primerItem.productoNombre:''} T${primerItem?primerItem.talla:''}/${primerItem?primerItem.color:''} x${cantidadCubierta}${siguePendiente?' — aún faltan otras tallas de este pedido':' — pedido completo'}`,
+      {
+        tipo:'reposicion_backorder',
+        pedidoId: ped.id,
+        cliente: clienteNombre,
+        vendedorNombre: ped.vendedorNombre||'—',
+        cantidadCubierta,
+        productoNombre: primerItem?primerItem.productoNombre:'',
+        talla: primerItem?primerItem.talla:'',
+        color: primerItem?primerItem.color:'',
+        quedaCompleto: !siguePendiente,
+      }
+    );
     writePedido(ped);
     detalle.push({
       pedidoId: ped.id,
-      cliente: (ped.cliente && ped.cliente.nombre) || 'Sin nombre',
+      cliente: clienteNombre,
       vendedorNombre: ped.vendedorNombre || '—',
       cantidadCubierta,
       quedaCompleto: !siguePendiente,
@@ -4863,13 +4896,37 @@ function renderAlertas(){
     else if((v.stockActual||0)<=(v.stockMinimo||0))bajo.push({p,v});
   }));
   const estancados=getEstancados(7).filter(({p})=>prods.find(x=>x.id===p.id));
+  // Reposiciones recientes: registro PERMANENTE de qué pedido/cliente se cubrió
+  // cada vez que llegó stock (no solo el aviso del momento). Queda visible aquí
+  // aunque hayan pasado días, para no tener que buscar pedido por pedido.
+  const reposiciones=getAlertas().filter(a=>a.tipo==='reposicion_backorder' &&
+    (!searchQ || (a.cliente||'').toLowerCase().includes(searchQ) || (a.productoNombre||'').toLowerCase().includes(searchQ) || (a.vendedorNombre||'').toLowerCase().includes(searchQ))
+  ).slice(0,40);
   const el=document.getElementById('alertas-content');
-  if(!sinStock.length&&!bajo.length&&!estancados.length){
+  if(!sinStock.length&&!bajo.length&&!estancados.length&&!reposiciones.length){
     el.innerHTML=`<div class="card" style="text-align:center;padding:52px"><div style="font-size:48px;margin-bottom:12px;color:var(--success)"><i class="bi bi-check-circle-fill"></i></div><h3 style="font-size:18px;font-weight:700">Todo en orden</h3><p class="text-muted" style="margin-top:6px">Sin alertas de stock ni modelos estancados</p></div>`;
     return;
   }
   const tblStock=(items,tipo)=>`<table><thead><tr><th>Producto</th><th>Proveedor</th><th>Variante</th><th>SKU</th><th>Mínimo</th><th>Stock</th><th>Acción</th></tr></thead><tbody>${items.map(({p,v})=>`<tr><td><strong>${p.nombre}</strong></td><td style="font-size:12px;color:var(--muted)">${p.proveedor||'—'}</td><td>${v.talla}/${v.color}</td><td style="font-family:monospace;font-size:11px">${v.sku||'—'}</td><td>${v.stockMinimo}</td><td>${tipo==='zero'?'<span class="badge badge-danger">0 uds</span>':`<span class="badge badge-warning">${v.stockActual} uds</span>`}</td><td><button class="btn btn-sm btn-success" onclick="navigate('entrada')">+ Ingresar</button></td></tr>`).join('')}</tbody></table>`;
   let html='';
+  if(reposiciones.length){
+    html+=`<div style="margin-bottom:24px"><div class="section-title mb-16" style="color:var(--success)"><i class="bi bi-box-seam-fill"></i> Reposiciones recientes — quién se cubrió al llegar stock (${reposiciones.length})</div>
+      <div class="card" style="padding:0;max-height:340px;overflow-y:auto">${reposiciones.map(a=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="bi bi-person-fill" style="color:var(--primary);font-size:13px"></i></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13px">${a.cliente||'—'} <span style="font-weight:400;color:var(--muted);font-size:11px">· vend. ${a.vendedorNombre||'—'}</span></div>
+            <div style="font-size:11px;color:var(--muted)">${a.productoNombre||''} T${a.talla||''}/${a.color||''} · ${fmtD(a.fecha)}${a.ts?' '+fmtT(a.ts):''}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-weight:700;color:var(--success)">+${a.cantidadCubierta||0}</div>
+            <div style="font-size:10px">${a.quedaCompleto?'<span class="badge badge-success">Completo</span>':'<span class="badge badge-warning">Parcial</span>'}</div>
+          </div>
+          ${a.pedidoId?`<button class="btn-icon" onclick="verDetallePedido('${a.pedidoId}')" title="Ver pedido"><i class="bi bi-eye-fill"></i></button>`:''}
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
   if(sinStock.length) html+=`<div style="margin-bottom:24px"><div class="section-title text-danger mb-16"><i class="bi bi-x-circle-fill"></i> Sin Stock — ${sinStock.length} variante(s)</div><div class="card">${tblStock(sinStock,'zero')}</div></div>`;
   if(bajo.length) html+=`<div style="margin-bottom:24px"><div class="section-title text-warning mb-16"><i class="bi bi-exclamation-triangle-fill"></i> Stock Bajo — ${bajo.length} variante(s)</div><div class="card">${tblStock(bajo,'low')}</div></div>`;
   if(estancados.length){
