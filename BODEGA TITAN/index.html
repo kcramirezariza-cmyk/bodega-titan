@@ -1602,6 +1602,20 @@ textarea{resize:vertical}
   </div>
 </div>
 
+<!-- MODAL: PEDIDOS REPUESTOS (qué pedido y de quién se cubrió con esta entrada) -->
+<div class="modal-overlay" id="modal-backorder-cubierto">
+  <div class="modal" style="max-width:560px;width:95%">
+    <div class="modal-header">
+      <div><div class="modal-title"><i class="bi bi-box-seam-fill" style="color:var(--success)"></i> Pedidos repuestos</div><div class="modal-sub" id="bkc-sub">—</div></div>
+      <button class="btn-icon" onclick="cerrarModal('modal-backorder-cubierto')"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div id="bkc-content" style="max-height:50vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="cerrarModal('modal-backorder-cubierto')">Entendido</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-rastreo">
   <div class="modal" style="max-width:560px;width:95%">
     <div class="modal-header">
@@ -3944,10 +3958,11 @@ function confirmarEntregaItemCompra(compraId, idx){
     // SEGURO: el pedido solo se marca "resuelto" si el descuento del stock ya
     // se confirmó. Si falla, el pedido queda "por reponer" y se reintenta solo
     // en la próxima entrada (nunca queda stock fantasma).
-    liberarBackordersPorEntregaSeguro(it.pid, it.vid, qty, function(cubiertos){
+    liberarBackordersPorEntregaSeguro(it.pid, it.vid, qty, function(cubiertos, detalle){
       if(cubiertos>0){
         writeMovement({id:uid(),tipo:'salida',subtipo:'backorder',fecha:hoy(),productoId:it.pid,varianteId:it.vid,cantidad:cubiertos,referencia:`Reposición backorder — ${c.proveedor}`,notas:'Entrega a pedidos que estaban por reponer',usuario:CU?.nombre||'',ts:Date.now()});
         toast(`+${qty} recibidas: ${it.productoNombre} T${it.talla}/${it.color}. Se cubrieron ${cubiertos} par(es) que estaban por reponer.`, 6000);
+        mostrarPedidosRepuestos(it.productoNombre, it.talla, it.color, cubiertos, detalle);
       } else {
         toast(`+${qty} unidades recibidas: ${it.productoNombre} T${it.talla}/${it.color}`);
       }
@@ -4009,8 +4024,12 @@ function calcularCoberturaBackorder(vid, qtyRecibida){
 
 // Fase 2 — se llama SOLO después de confirmar que el stock ya se descontó.
 // Aplica el plan calculado en la fase 1: marca cada ítem/pedido como resuelto.
+// Devuelve un `detalle` (array) con QUIÉN fue cubierto, para poder mostrarlo
+// en pantalla sin tener que ir a buscarlo en la lista de pedidos.
 function aplicarCoberturaBackorder(plan){
+  const detalle=[];
   plan.forEach(({pedido:ped, cambios})=>{
+    const cantidadCubierta=cambios.reduce((s,c)=>s+c.cubre,0);
     cambios.forEach(({item:it, cubre})=>{
       it.faltante=Math.max(0,(it.faltante||0)-cubre);
       if(it.faltante<=0){ it.faltante=0; it.backorder=false; }
@@ -4021,28 +4040,62 @@ function aplicarCoberturaBackorder(plan){
       registrarAlertaStock('Backorder cubierto', `Pedido #${ped.id.slice(-6)} de ${ped.vendedorNombre||''}: ya tiene stock físico completo`);
     }
     writePedido(ped);
+    detalle.push({
+      pedidoId: ped.id,
+      cliente: (ped.cliente && ped.cliente.nombre) || 'Sin nombre',
+      vendedorNombre: ped.vendedorNombre || '—',
+      cantidadCubierta,
+      quedaCompleto: !siguePendiente,
+    });
   });
+  return detalle;
 }
 
 // Envoltorio que hace TODO el ciclo correctamente: calcula, descuenta el
 // stock de forma atómica y SOLO si eso confirma, aplica el plan. `onDone`
-// recibe (cubiertos) — 0 si no había nada que cubrir o si el descuento falló
-// (en ese caso los pedidos quedaron intactos, pendientes, para reintentar).
+// recibe (cubiertos, detalle) — cubiertos=0 y detalle=[] si no había nada que
+// cubrir o si el descuento falló (en ese caso los pedidos quedaron intactos,
+// pendientes, para reintentar). `detalle` trae quién fue cubierto (cliente,
+// vendedora, pedido, cantidad) para mostrarlo sin buscar en la lista de pedidos.
 function liberarBackordersPorEntregaSeguro(pid, vid, qtyRecibida, onDone){
   const {cubiertosTotal, plan} = calcularCoberturaBackorder(vid, qtyRecibida);
-  if(cubiertosTotal<=0){ onDone(0); return; }
+  if(cubiertosTotal<=0){ onDone(0, []); return; }
   ajustarStockAtomico(pid, vid, -cubiertosTotal, function(ok){
     if(!ok){
       // No se pudo descontar (p.ej. una venta concurrente agotó el stock
       // recién ingresado). NO tocamos los pedidos: siguen "por reponer" y se
       // reintentan solos en la próxima entrada. Nunca queda stock fantasma.
       console.warn('[BACKORDER] Cobertura pospuesta — no se pudo descontar el stock todavía:', pid, vid, cubiertosTotal);
-      onDone(0);
+      onDone(0, []);
       return;
     }
-    aplicarCoberturaBackorder(plan);
-    onDone(cubiertosTotal);
+    const detalle = aplicarCoberturaBackorder(plan);
+    onDone(cubiertosTotal, detalle);
   });
+}
+
+// Muestra, en un modal, EXACTAMENTE qué pedido(s) y de quién se repusieron con
+// esta entrada de stock — para no tener que ir a buscarlos uno por uno en la
+// lista de pedidos. `detalle` viene de liberarBackordersPorEntregaSeguro.
+function mostrarPedidosRepuestos(productoNombre, talla, color, cantidadCubierta, detalle){
+  const sub=document.getElementById('bkc-sub');
+  if(sub) sub.textContent = `${productoNombre} · T${talla}/${color} — ${cantidadCubierta} par${cantidadCubierta===1?'':'es'} asignado${cantidadCubierta===1?'':'s'}`;
+  const filas=(detalle||[]).map(d=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid var(--border)">
+      <div style="width:38px;height:38px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="bi bi-person-fill" style="color:var(--primary)"></i></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px">${d.cliente}</div>
+        <div style="font-size:11px;color:var(--muted)">Vendedora: ${d.vendedorNombre} · Pedido #${d.pedidoId.slice(-6)}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-weight:700;color:var(--success)">${d.cantidadCubierta} par${d.cantidadCubierta===1?'':'es'}</div>
+        <div style="font-size:10px">${d.quedaCompleto?'<span class="badge badge-success">Completo</span>':'<span class="badge badge-warning">Aún faltan otras tallas</span>'}</div>
+      </div>
+      <button class="btn-icon" onclick="cerrarModal('modal-backorder-cubierto');verDetallePedido('${d.pedidoId}')" title="Ver pedido"><i class="bi bi-eye-fill"></i></button>
+    </div>`).join('');
+  const cont=document.getElementById('bkc-content');
+  if(cont) cont.innerHTML = filas || '<div class="empty" style="padding:24px"><div class="empty-icon"><i class="bi bi-inbox"></i></div><h3>Sin pedidos que mostrar</h3></div>';
+  abrirModal('modal-backorder-cubierto');
 }
 
 // ════════════════════════════════════════
@@ -4445,10 +4498,18 @@ function regEntrada(){
     // los pares "por reponer" de esa talla/color, igual que una entrega de
     // proveedor. SEGURO: el pedido solo se marca "resuelto" si el descuento del
     // stock ya se confirmó; si falla, queda "por reponer" y se reintenta solo.
-    liberarBackordersPorEntregaSeguro(pid, vid, qty, function(cubiertos){
+    // Guardamos nombre/talla/color ANTES de limpiar el formulario más abajo,
+    // para poder identificarlos en el modal de "pedidos repuestos".
+    const _prodParaModal=getProds().find(p=>p.id===pid);
+    const _varParaModal=_prodParaModal&&_prodParaModal.variantes.find(v=>v.id===vid);
+    const _nombreParaModal=_prodParaModal?_prodParaModal.nombre:'';
+    const _tallaParaModal=_varParaModal?_varParaModal.talla:'';
+    const _colorParaModal=_varParaModal?_varParaModal.color:'';
+    liberarBackordersPorEntregaSeguro(pid, vid, qty, function(cubiertos, detalle){
       if(cubiertos>0){
         writeMovement({id:uid(),tipo:'salida',subtipo:'backorder',fecha:hoy(),productoId:pid,varianteId:vid,cantidad:cubiertos,referencia:'Reposición backorder (ingreso manual)',notas:'Entrega a pedidos que estaban por reponer',usuario:CU?.nombre||'',ts:Date.now()});
         toast(`+${qty} unidades. Se cubrieron ${cubiertos} par(es) que estaban por reponer (asignados al pedido más antiguo).`, 6000);
+        mostrarPedidosRepuestos(_nombreParaModal, _tallaParaModal, _colorParaModal, cubiertos, detalle);
       } else {
         toast(`${subtipo==='devolucion'?'Devolución':'Compra'}: +${qty} unidades`);
       }
